@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org" xmlns:exch="http://www.epo.org/exchange">
+  <ops:biblio-search total-result-count="533255" publications-count="20">
+    <ops:range begin="1" end="20" />
+    <ops:search-result>
+      <ops:publication-reference system="ops.epo.org" family-id="1">
+        <document-id document-id-type="docdb">
+          <country>EP</country><doc-number>1234567</doc-number><kind>A1</kind><date>20200102</date>
+        </document-id>
+        <document-id document-id-type="epodoc">
+          <doc-number>EP1234567</doc-number>
+        </document-id>
+      </ops:publication-reference>
+      <ops:publication-reference system="ops.epo.org" family-id="2">
+        <document-id document-id-type="docdb">
+          <country>WO</country><doc-number>2024000001</doc-number><kind>A1</kind><date>20240201</date>
+        </document-id>
+        <document-id document-id-type="epodoc">
+          <doc-number>WO2024000001</doc-number>
+        </document-id>
+      </ops:publication-reference>
+    </ops:search-result>
+  </ops:biblio-search>
+</ops:world-patent-data>

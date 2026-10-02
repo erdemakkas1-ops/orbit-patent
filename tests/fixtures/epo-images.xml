@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org">
+  <ops:document-inquiry>
+    <ops:publication-reference>
+      <document-id document-id-type="docdb">
+        <country>EP</country><doc-number>1234567</doc-number><kind>A1</kind>
+      </document-id>
+    </ops:publication-reference>
+    <ops:inquiry-result>
+      <ops:publication-reference>
+        <document-id document-id-type="docdb">
+          <country>EP</country><doc-number>1234567</doc-number><kind>A1</kind>
+        </document-id>
+      </ops:publication-reference>
+      <ops:document-instance system="ops.epo.org" number-of-pages="5" desc="Drawing" link="published-data/images/EP/1234567/A1/thumbnail">
+        <ops:document-format-options>
+          <ops:document-format>application/pdf</ops:document-format>
+          <ops:document-format>application/tiff</ops:document-format>
+        </ops:document-format-options>
+        <ops:document-section name="DRAWINGS" start-page="1" />
+      </ops:document-instance>
+      <ops:document-instance system="ops.epo.org" number-of-pages="30" desc="FullDocument" link="published-data/images/EP/1234567/A1/fullimage">
+        <ops:document-section name="DESCRIPTION" start-page="2" />
+        <ops:document-section name="DRAWINGS" start-page="23" />
+        <ops:document-section name="SEARCH_REPORT" start-page="28" />
+      </ops:document-instance>
+    </ops:inquiry-result>
+  </ops:document-inquiry>
+</ops:world-patent-data>

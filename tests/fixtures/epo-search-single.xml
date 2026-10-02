@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org">
+  <ops:biblio-search total-result-count="1" publications-count="1">
+    <ops:range begin="1" end="1" />
+    <ops:search-result>
+      <ops:publication-reference system="ops.epo.org" family-id="3">
+        <document-id document-id-type="docdb">
+          <country>EP</country><doc-number>7654321</doc-number><kind>B1</kind><date>20210304</date>
+        </document-id>
+      </ops:publication-reference>
+    </ops:search-result>
+  </ops:biblio-search>
+</ops:world-patent-data>

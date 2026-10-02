@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org" xmlns:exch="http://www.epo.org/exchange">
+  <exch:exchange-documents>
+    <exch:exchange-document system="ops.epo.org" family-id="1" country="EP" doc-number="1234567" kind="A1">
+      <exch:bibliographic-data>
+        <exch:publication-reference>
+          <document-id document-id-type="docdb">
+            <country>EP</country><doc-number>1234567</doc-number><kind>A1</kind><date>20200102</date>
+          </document-id>
+        </exch:publication-reference>
+        <exch:application-reference>
+          <document-id document-id-type="epodoc"><doc-number>EP19123456</doc-number><date>20190701</date></document-id>
+        </exch:application-reference>
+        <exch:invention-title lang="en">Robotic gripper</exch:invention-title>
+        <exch:parties>
+          <exch:inventors><exch:inventor><exch:inventor-name>Ada Lovelace</exch:inventor-name></exch:inventor></exch:inventors>
+          <exch:applicants><exch:applicant><exch:applicant-name>Orbit Lab</exch:applicant-name></exch:applicant></exch:applicants>
+        </exch:parties>
+        <exch:classifications-ipcr><exch:classification-ipc><text>B25J15/00</text></exch:classification-ipc></exch:classifications-ipcr>
+        <exch:patent-classifications>
+          <exch:patent-classification>
+            <exch:classification-scheme office="EP" scheme="CPCI" />
+            <exch:section>B</exch:section><exch:class>25</exch:class><exch:subclass>J</exch:subclass><exch:main-group>19</exch:main-group><exch:subgroup>5</exch:subgroup>
+          </exch:patent-classification>
+        </exch:patent-classifications>
+      </exch:bibliographic-data>
+      <exch:abstract lang="en"><p>Force feedback controls the gripper.</p></exch:abstract>
+    </exch:exchange-document>
+  </exch:exchange-documents>
+</ops:world-patent-data>
