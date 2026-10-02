@@ -19,11 +19,28 @@ import {
 import { EpoImageService } from "./epo/images";
 
 export type EpoResponseMetadata = {
+  path: string;
   status: number;
   contentType: string;
   durationMs: number;
   safeErrorSummary?: string;
 };
+
+function logEpoError(metadata: EpoResponseMetadata) {
+  if (process.env.NODE_ENV === "development") return;
+  console.error(
+    "[EPO OPS ERROR]",
+    JSON.stringify({
+      path: metadata.path,
+      status: metadata.status,
+      durationMs: metadata.durationMs,
+      contentType: metadata.contentType,
+      ...(metadata.safeErrorSummary
+        ? { safeErrorSummary: metadata.safeErrorSummary }
+        : {}),
+    }),
+  );
+}
 
 export class EpoOpsHttpError extends Error {
   constructor(
@@ -90,23 +107,47 @@ export class EpoOpsClient {
     range?: string,
     observe?: (metadata: EpoResponseMetadata) => void,
   ) {
-    const { response, durationMs } = await this.fetchAuthorized(
-      path,
-      "application/exchange+xml",
-      params,
-      range,
-    );
+    const started = Date.now();
+    let response: Response;
+    let durationMs: number;
+    try {
+      ({ response, durationMs } = await this.fetchAuthorized(
+        path,
+        "application/exchange+xml",
+        params,
+        range,
+      ));
+    } catch (error) {
+      logEpoError({
+        path,
+        status: 0,
+        contentType: "",
+        durationMs: Date.now() - started,
+        safeErrorSummary:
+          error instanceof Error ? error.message : "network error",
+      });
+      throw error;
+    }
     const contentType = response.headers.get("content-type") ?? "";
     const body = await response.text();
     const safeErrorSummary = response.ok
       ? undefined
       : safeUpstreamSummary(body);
     observe?.({
+      path,
       status: response.status,
       contentType,
       durationMs,
       safeErrorSummary,
     });
+    if (!response.ok)
+      logEpoError({
+        path,
+        status: response.status,
+        contentType,
+        durationMs,
+        safeErrorSummary,
+      });
     if (!response.ok)
       throw new EpoOpsHttpError(
         response.status,
