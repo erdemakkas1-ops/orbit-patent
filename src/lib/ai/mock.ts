@@ -6,6 +6,7 @@ import { fold } from "@/lib/patents/search-schema";
 import { mockBuild } from "@/data/mock-builds";
 export class MockAiProvider implements AiProvider {
   readonly source = "mock" as const;
+  readonly model = "mock-v1";
   async analyzeProjectIntent(text: string, _locale: Locale) {
     const normalized = fold(text);
     const matches = topics.filter((t) =>
@@ -89,5 +90,8 @@ export class MockAiProvider implements AiProvider {
       difficultyImpact: index === 2 ? 1 : 0.5,
       estimatedCostImpact: [450, 700, 350][index],
     }));
+  }
+  async translatePatentTexts(): Promise<never> {
+    throw new Error("AI_TRANSLATION_UNAVAILABLE");
   }
 }

@@ -72,6 +72,27 @@ export const modernizationSchema = z.object({
     )
     .max(8),
 });
+export const patentTranslationBatchSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        index: z.number().int().nonnegative(),
+        title: short,
+        abstract: z.string().trim().max(4000),
+        description: z.string().trim().max(12000),
+      }),
+    )
+    .max(20),
+});
+export type PatentTranslationInput = {
+  publicationNumber: string;
+  title: string;
+  abstract: string;
+  description: string;
+};
+export type PatentTranslation = z.infer<
+  typeof patentTranslationBatchSchema
+>["items"][number];
 export type ProjectIntent = z.infer<typeof intentSchema>;
 export type Simplification = z.infer<typeof simplificationSchema>;
 export type DifficultyInput = z.infer<typeof difficultyInputSchema>;

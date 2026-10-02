@@ -21,8 +21,9 @@ const text = (value: unknown): string =>
   typeof value === "string" || typeof value === "number"
     ? String(value).trim()
     : value && typeof value === "object"
-      ? Object.values(value as Node)
-          .map(text)
+      ? Object.entries(value as Node)
+          .filter(([key]) => !key.startsWith("@_"))
+          .map(([, item]) => text(item))
           .filter(Boolean)
           .join(" ")
           .trim()
@@ -35,7 +36,22 @@ const first = (node: Node | undefined, keys: string[]) => {
   }
   return "";
 };
-const localized = (value: string): Localized => ({ tr: value, en: value });
+const languageOf = (node: Node) =>
+  first(node, ["@_lang", "@_language", "lang", "language"])
+    .toLowerCase()
+    .split("-")[0];
+const localizedNodes = (nodes: Node[], fallback: string): Localized => {
+  const values = nodes
+    .map((node) => ({ language: languageOf(node), value: text(node) }))
+    .filter((item) => item.value);
+  return {
+    tr: values.find((item) => item.language === "tr")?.value ?? "",
+    en:
+      values.find((item) => item.language === "en")?.value ??
+      values[0]?.value ??
+      fallback,
+  };
+};
 const normalizeDate = (value: string) =>
   /^\d{8}$/.test(value)
     ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6)}`
@@ -83,9 +99,9 @@ function parseDocument(node: Node): Patent | null {
   const pubId = getDocId(pubRef, "docdb") ?? getDocId(pubRef, "epodoc");
   const publication = publicationNumber(pubRef);
   if (!publication) return null;
-  const titleNode = asArray(bibliographic["invention-title"])[0] ?? {};
-  const abstractNode =
-    asArray(node["abstract"])[0] ?? asArray(node["abstracts"])[0] ?? {};
+  const titleNodes = asArray(bibliographic["invention-title"]);
+  const abstractNodes = asArray(node["abstract"]);
+  if (!abstractNodes.length) abstractNodes.push(...asArray(node["abstracts"]));
   const parties = (bibliographic["parties"] as Node | undefined) ?? {};
   const inventors = asArray(
     parties["inventors"] && (parties["inventors"] as Node)["inventor"],
@@ -137,8 +153,8 @@ function parseDocument(node: Node): Patent | null {
     .filter(Boolean);
   const cpc = [...new Set([...legacyCpc, ...structuredCpc])];
   const id = publication;
-  const title = first(titleNode, ["#text", "text", "invention-title"]);
-  const abstract = text(abstractNode);
+  const title = localizedNodes(titleNodes, publication);
+  const abstract = localizedNodes(abstractNodes, "");
   const applicationId = getDocId(appRef, "epodoc") ?? getDocId(appRef, "docdb");
   const priorityId = priority
     ? (getDocId(priority, "epodoc") ?? getDocId(priority, "docdb"))
@@ -151,9 +167,13 @@ function parseDocument(node: Node): Patent | null {
       "docnumber",
       "number",
     ]),
-    title: localized(title || publication),
-    abstract: localized(abstract),
-    description: localized(abstract),
+    title,
+    abstract,
+    description: { ...abstract },
+    originalLanguage:
+      titleNodes.map(languageOf).find(Boolean) ||
+      abstractNodes.map(languageOf).find(Boolean) ||
+      undefined,
     inventors,
     applicants,
     publicationDate: normalizeDate(first(pubId, ["date", "publication-date"])),

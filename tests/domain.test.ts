@@ -12,7 +12,11 @@ import {
   yearRanges,
 } from "../src/lib/patents/discovery";
 import { mockPatents } from "../src/data/mock-patents";
-import { intentSchema, materialSchema } from "../src/types/ai";
+import {
+  intentSchema,
+  materialSchema,
+  patentTranslationBatchSchema,
+} from "../src/types/ai";
 import {
   calculateCost,
   calculateDifficulty,
@@ -62,6 +66,12 @@ import { buildMetadata, seoCopy, siteUrl } from "../src/lib/seo";
 import { stableCacheKey } from "../src/lib/cache-key";
 import { admitAiRequest } from "../src/lib/rate-limit";
 import { normalizeProjectText } from "../src/lib/ai/input";
+import {
+  clearTranslationCacheForTests,
+  localizePatentsWithProvider,
+  patentTranslationCacheKey,
+} from "../src/lib/ai/translation-core";
+import { safeAiErrorDetails } from "../src/lib/ai/error-log";
 const event = (
   kind: LegalEvent["kind"],
   date: string,
@@ -315,6 +325,35 @@ test("EPO parser normalizes multilingual namespace XML and missing fields", () =
     readFileSync("tests/fixtures/epo-broken.xml", "utf8"),
   );
   assert.equal(broken.patents[0].publicationNumber, "EP");
+});
+test("EPO parser preserves real language variants without copying English into Turkish", () => {
+  const result = parseEpoBiblio(`
+    <world-patent-data><exchange-documents><exchange-document>
+      <bibliographic-data>
+        <publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>42</doc-number><kind>A1</kind></document-id></publication-reference>
+        <invention-title lang="en">Smart gripper</invention-title>
+        <invention-title lang="tr">Akıllı tutucu</invention-title>
+      </bibliographic-data>
+      <abstract lang="en"><p>Force feedback.</p></abstract>
+      <abstract lang="tr"><p>Kuvvet geri bildirimi.</p></abstract>
+    </exchange-document></exchange-documents></world-patent-data>`);
+  assert.equal(result?.title.en, "Smart gripper");
+  assert.equal(result?.title.tr, "Akıllı tutucu");
+  assert.equal(result?.abstract.en, "Force feedback.");
+  assert.equal(result?.abstract.tr, "Kuvvet geri bildirimi.");
+  assert.doesNotMatch(result?.abstract.en ?? "", /en|lang/);
+
+  const englishOnly = parseEpoBiblio(`
+    <world-patent-data><exchange-documents><exchange-document>
+      <bibliographic-data>
+        <publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>43</doc-number><kind>A1</kind></document-id></publication-reference>
+        <invention-title lang="en">Original title</invention-title>
+      </bibliographic-data>
+      <abstract lang="en"><p>Original abstract.</p></abstract>
+    </exchange-document></exchange-documents></world-patent-data>`);
+  assert.equal(englishOnly?.title.en, "Original title");
+  assert.equal(englishOnly?.title.tr, "");
+  assert.equal(englishOnly?.abstract.tr, "");
 });
 test("EPO search parser keeps publication-reference-only results", () => {
   const multiple = parseEpoSearch(
@@ -663,6 +702,124 @@ test("mock fallback is disabled in production", () => {
 test("Zod rejects incomplete AI output", () => {
   assert.throws(() => intentSchema.parse({ keywords: ["robot"] }));
   assert.throws(() => materialSchema.parse({ name: "Sensor", quantity: 0 }));
+});
+test("translation structured output validates indexes and text", () => {
+  assert.equal(
+    patentTranslationBatchSchema.parse({
+      items: [
+        {
+          index: 0,
+          title: "Başlık",
+          abstract: "Özet",
+          description: "Açıklama",
+        },
+      ],
+    }).items[0].title,
+    "Başlık",
+  );
+  assert.throws(() =>
+    patentTranslationBatchSchema.parse({ items: [{ index: -1, title: "" }] }),
+  );
+});
+test("Turkish patent localization batches cache misses and reuses per-patent cache", async () => {
+  clearTranslationCacheForTests();
+  let calls = 0;
+  let batchSize = 0;
+  const provider = {
+    source: "openai" as const,
+    model: "gpt-4.1-mini",
+    async translatePatentTexts(items: unknown[]) {
+      calls += 1;
+      batchSize = items.length;
+      return items.map((_item, index) => ({
+        index,
+        title: `Türkçe ${index}`,
+        abstract: `Özet ${index}`,
+        description: `Açıklama ${index}`,
+      }));
+    },
+  };
+  const patents = mockPatents.slice(0, 2).map((patent, index) => ({
+    ...patent,
+    publicationNumber: `CACHE-${index}`,
+    title: { tr: "", en: `English ${index}` },
+    abstract: { tr: "", en: `Abstract ${index}` },
+    description: { tr: "", en: `Description ${index}` },
+  }));
+  const first = await localizePatentsWithProvider(patents, "tr", provider);
+  const second = await localizePatentsWithProvider(patents, "tr", provider);
+  assert.equal(calls, 1);
+  assert.equal(batchSize, 2);
+  assert.equal(first[1].translations?.tr?.title, "Türkçe 1");
+  assert.equal(second[0].translations?.tr?.abstract, "Özet 0");
+  assert.equal(patents[0].title.en, "English 0");
+  assert.equal(patents[0].translations, undefined);
+});
+test("translation failure falls back to original source and cache keys include model and source hash", async () => {
+  clearTranslationCacheForTests();
+  const patent = {
+    ...mockPatents[0],
+    publicationNumber: "FALLBACK-1",
+    title: { tr: "", en: "Original" },
+    abstract: { tr: "", en: "Original abstract" },
+    description: { tr: "", en: "Original description" },
+  };
+  const failing = {
+    source: "openai" as const,
+    model: "gpt-4.1-mini",
+    async translatePatentTexts() {
+      throw new Error("upstream unavailable");
+    },
+  };
+  const localized = await localizePatentsWithProvider([patent], "tr", failing);
+  assert.equal(localized[0], patent);
+  assert.notEqual(
+    patentTranslationCacheKey(patent, "tr", failing),
+    patentTranslationCacheKey(
+      { ...patent, title: { ...patent.title, en: "Changed" } },
+      "tr",
+      failing,
+    ),
+  );
+  assert.notEqual(
+    patentTranslationCacheKey(patent, "tr", failing),
+    patentTranslationCacheKey(patent, "tr", { ...failing, model: "other" }),
+  );
+});
+test("display prefers real Turkish, then cached translation, while English stays original", () => {
+  const patent = {
+    ...mockPatents[0],
+    title: { tr: "Gerçek Türkçe", en: "Original English" },
+    abstract: { tr: "", en: "Original abstract" },
+    description: { tr: "", en: "Original description" },
+    translations: {
+      tr: {
+        title: "Translated title",
+        abstract: "Çevrilmiş özet",
+        description: "Çevrilmiş açıklama",
+      },
+    },
+  };
+  assert.equal(patentDisplay(patent, "tr", "Yok").title, "Gerçek Türkçe");
+  assert.equal(patentDisplay(patent, "tr", "Yok").abstract, "Çevrilmiş özet");
+  assert.equal(patentDisplay(patent, "en", "None").title, "Original English");
+});
+test("safe AI logs redact credentials and keep diagnostic fields", () => {
+  const error = Object.assign(new Error("Invalid key sk-supersecret123456"), {
+    status: 401,
+    code: "invalid_api_key",
+    request_id: "req_123",
+  });
+  const details = safeAiErrorDetails(
+    error,
+    "project_intent",
+    "gpt-4.1-mini",
+    12,
+  );
+  assert.equal(details.status, 401);
+  assert.equal(details.code, "invalid_api_key");
+  assert.equal(details.requestId, "req_123");
+  assert.doesNotMatch(JSON.stringify(details), /supersecret/);
 });
 test("cost values are finite, non-negative and ordered", () => {
   const result = calculateCost(

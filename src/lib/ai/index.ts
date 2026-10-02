@@ -10,6 +10,7 @@ import { stableCacheKey } from "@/lib/cache-key";
 const mock = new MockAiProvider();
 class UnavailableAiProvider implements AiProvider {
   readonly source = "openai" as const;
+  readonly model = serverEnv.OPENAI_MODEL || "gpt-4.1-mini";
   private fail(): never {
     throw new Error("AI_PROVIDER_UNAVAILABLE");
   }
@@ -23,6 +24,9 @@ class UnavailableAiProvider implements AiProvider {
     return this.fail();
   }
   suggestModernization(): never {
+    return this.fail();
+  }
+  translatePatentTexts(): never {
     return this.fail();
   }
 }

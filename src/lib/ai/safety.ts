@@ -146,9 +146,24 @@ export function patentDisplay(
   locale: Locale,
   fallback: string,
 ) {
+  const translated = patent.translations?.[locale];
   return {
-    title: localizedText(patent.title, locale, fallback, 240),
-    abstract: localizedText(patent.abstract, locale, fallback, 1200),
-    description: localizedText(patent.description, locale, fallback, 4000),
+    title: safeText(
+      patent.title[locale] || translated?.title || patent.title.en,
+      fallback,
+      240,
+    ),
+    abstract: safeText(
+      patent.abstract[locale] || translated?.abstract || patent.abstract.en,
+      fallback,
+      1200,
+    ),
+    description: safeText(
+      patent.description[locale] ||
+        translated?.description ||
+        patent.description.en,
+      fallback,
+      4000,
+    ),
   };
 }

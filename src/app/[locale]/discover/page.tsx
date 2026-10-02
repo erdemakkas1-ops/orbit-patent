@@ -12,6 +12,7 @@ import { DiscoverCard } from "@/components/patents/discover-card";
 import { Button } from "@/components/ui/button";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
+import { localizePatents } from "@/lib/ai/translation";
 
 export async function generateMetadata({
   params,
@@ -50,10 +51,16 @@ export default async function DiscoverPage({
     page: query.page,
     pageSize: liveDiscovery ? 6 : 20,
   };
-  const result =
+  const rawResult =
     parsed.success && patentProvider.discoverPatents
       ? await patentProvider.discoverPatents(filters).catch(() => null)
       : null;
+  const result = rawResult
+    ? {
+        ...rawResult,
+        patents: await localizePatents(rawResult.patents, locale),
+      }
+    : null;
   const hasFilters = Boolean(
     query.category || legalStatus || query.year || query.sort !== "featured",
   );

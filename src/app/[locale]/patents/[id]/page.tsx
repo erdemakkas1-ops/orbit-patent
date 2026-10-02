@@ -14,6 +14,7 @@ import {
   safeText,
 } from "@/lib/ai/safety";
 import { PatentDrawingViewer } from "@/components/patents/patent-drawing-viewer";
+import { localizePatents } from "@/lib/ai/translation";
 
 type DetailProps = { params: Promise<{ locale: string; id: string }> };
 
@@ -29,10 +30,11 @@ export async function generateMetadata({
       title: m.notFound,
       path: `/${locale}/patents/${encodeURIComponent(id)}`,
     });
-  const title = patentDisplay(patent, locale, m.noData).title;
+  const [localizedPatent] = await localizePatents([patent], locale);
+  const title = patentDisplay(localizedPatent, locale, m.noData).title;
   return buildMetadata(locale, {
     title: `${title} – ${safeText(patent.publicationNumber, m.noData, 120)}`,
-    description: patentDisplay(patent, locale, m.noData).abstract,
+    description: patentDisplay(localizedPatent, locale, m.noData).abstract,
     path: `/${locale}/patents/${encodeURIComponent(id)}`,
   });
 }
@@ -41,8 +43,9 @@ export default async function Detail({ params }: DetailProps) {
   const { locale, id } = await params;
   if (!isLocale(locale)) notFound();
   const m = messages[locale];
-  const p = await getPatent(id);
-  if (!p) notFound();
+  const sourcePatent = await getPatent(id);
+  if (!sourcePatent) notFound();
+  const [p] = await localizePatents([sourcePatent], locale);
   const display = patentDisplay(p, locale, m.noData);
   const raw = await analyzePatent(p, locale).catch(() => null);
   const analysis = raw
