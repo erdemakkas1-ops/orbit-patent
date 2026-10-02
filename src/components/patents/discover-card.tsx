@@ -36,7 +36,9 @@ export function DiscoverCard({
           <span className={`badge status-${patent.legalStatus.toLowerCase()}`}>
             {m.statuses[patent.legalStatus]}
           </span>
-          <span className="badge">{m.discoveryCategories[category]}</span>
+          <span className="badge">
+            {category ? m.discoveryCategories[category] : m.unclassified}
+          </span>
           <span className="badge source-badge">
             {patent.source === "mock" ? m.mock : m.live}
           </span>

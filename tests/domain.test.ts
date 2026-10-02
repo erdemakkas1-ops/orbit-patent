@@ -33,6 +33,7 @@ import {
   EpoOpsClient,
   EpoOpsHttpError,
   EpoOpsPatentProvider,
+  hydratePatentReferences,
 } from "../src/lib/patents/providers/epo";
 import {
   parsePatentIdentifier,
@@ -267,6 +268,15 @@ test("EPO query builder escapes CQL input and creates ranges", () => {
       range: "21-40",
     },
   );
+  assert.equal(
+    buildEpoQuery({
+      anyTerms: ["robot", "gripper", "manipulator"],
+      yearRange: { from: 2010, to: 2019 },
+      sort: "relevance",
+      page: 1,
+    }),
+    '(ta="robot" OR ta="gripper" OR ta="manipulator") AND publicationdate within "20100101,20191231"',
+  );
 });
 test("EPO identifiers separate route, EPODOC and DOCDB formats", () => {
   for (const [input, epodoc, docdb] of [
@@ -318,6 +328,7 @@ test("EPO search parser keeps publication-reference-only results", () => {
   assert.equal(multiple.patents[0].publicationNumber, "EP1234567A1");
   assert.equal(multiple.patents[0].title.en, "EP1234567A1");
   assert.equal(multiple.patents[0].abstract.en, "");
+  assert.equal(categorizePatent(multiple.patents[0]), null);
   assert.equal(multiple.diagnostics.publicationReferences, 2);
   assert.equal(multiple.diagnostics.opsPublicationReferences, 2);
   assert.equal(multiple.diagnostics.exchangeDocuments, 0);
@@ -422,6 +433,143 @@ test("EPO provider normalizes client responses and caches identical searches", a
   assert.equal(first.patents[0].publicationNumber, "EP1234567A1");
   assert.equal(second.total, 1);
   assert.equal(calls, 1);
+});
+test("EPO discovery maps categories and years to one cached OPS search", async () => {
+  const requests: Array<{
+    path: string;
+    params?: Record<string, string>;
+    range?: string;
+  }> = [];
+  const xml = readFileSync(
+    "tests/fixtures/epo-search-publication-references.xml",
+    "utf8",
+  );
+  const provider = new EpoOpsPatentProvider({
+    request: async (
+      path: string,
+      params?: Record<string, string>,
+      range?: string,
+    ) => {
+      requests.push({ path, params, range });
+      return xml;
+    },
+  } as never);
+  const hydratedIds: string[] = [];
+  provider.getPatentById = async (id: string) => {
+    hydratedIds.push(id);
+    return {
+      ...mockPatents[0],
+      id,
+      publicationNumber: id,
+      title: { tr: `Hydrated ${id}`, en: `Hydrated ${id}` },
+      abstract: { tr: "Gerçek özet", en: "Real abstract" },
+      publicationDate: "2018-05-06",
+      drawings: [
+        {
+          url: `/api/patents/${id}/drawings/1`,
+          caption: { tr: "Çizim", en: "Drawing" },
+        },
+      ],
+      source: "epo",
+    };
+  };
+  const filters = {
+    category: "robotics" as const,
+    yearRange: { from: 2010, to: 2019 },
+    sort: "newest" as const,
+    page: 2,
+    pageSize: 6,
+  };
+  const first = await provider.discoverPatents(filters);
+  const second = await provider.discoverPatents(filters);
+  assert.equal(first.patents[0].publicationNumber, "EP1234567A1");
+  assert.equal(first.patents[0].title.en, "Hydrated EP1234567A1");
+  assert.equal(first.patents[0].abstract.en, "Real abstract");
+  assert.equal(first.patents[0].publicationDate, "2018-05-06");
+  assert.equal(first.patents[0].drawings.length, 1);
+  assert.equal(second.source, "epo");
+  assert.deepEqual(hydratedIds, ["EP1234567A1", "WO2024000001A1"]);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].path, "published-data/search");
+  assert.equal(requests[0].range, "7-12");
+  assert.equal(
+    requests[0].params?.q,
+    '(ta="robot" OR ta="gripper" OR ta="manipulator") AND publicationdate within "20100101,20191231"',
+  );
+  await assert.rejects(
+    provider.discoverPatents({
+      ...filters,
+      legalStatus: LegalStatus.ACTIVE,
+    }),
+    /EPO_LEGAL_STATUS_FILTER_UNAVAILABLE/,
+  );
+});
+test("EPO featured patents use one deterministic cached search", async () => {
+  let calls = 0;
+  const xml = readFileSync(
+    "tests/fixtures/epo-search-publication-references.xml",
+    "utf8",
+  );
+  const provider = new EpoOpsPatentProvider({
+    request: async () => {
+      calls++;
+      return xml;
+    },
+  } as never);
+  provider.getPatentById = async (id: string) => ({
+    ...mockPatents[0],
+    id,
+    publicationNumber: id,
+    source: "epo",
+  });
+  const first = await provider.getFeaturedPatents(3);
+  const second = await provider.getFeaturedPatents(3);
+  assert.deepEqual(
+    first.map((patent) => patent.id),
+    second.map((patent) => patent.id),
+  );
+  assert.equal(calls, 1);
+  assert.deepEqual(await provider.getFeaturedPatents(0), []);
+  assert.equal(calls, 1);
+});
+test("EPO hydration bounds concurrency, removes duplicates and survives failures", async () => {
+  const references = ["EP1A1", "EP2A1", "EP2A1", "EP3A1", "EP4A1"].map(
+    (id) => ({
+      ...mockPatents[0],
+      id,
+      publicationNumber: id,
+      source: "epo" as const,
+    }),
+  );
+  let active = 0;
+  let maxActive = 0;
+  const calls: string[] = [];
+  const hydrated = await hydratePatentReferences(
+    references,
+    async (id) => {
+      calls.push(id);
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      if (id === "EP3A1") throw new Error("single detail failure");
+      return {
+        ...mockPatents[0],
+        id,
+        publicationNumber: id,
+        title: { tr: `Hydrated ${id}`, en: `Hydrated ${id}` },
+        source: "epo" as const,
+      };
+    },
+    4,
+    10,
+  );
+  assert.equal(maxActive, 3);
+  assert.deepEqual(calls, ["EP1A1", "EP2A1", "EP3A1", "EP4A1"]);
+  assert.deepEqual(
+    hydrated.map((patent) => patent.id),
+    ["EP1A1", "EP2A1", "EP4A1"],
+  );
 });
 test("EPO detail removes kind for EPODOC and uses controlled DOCDB fallback", async () => {
   const calls: string[] = [];

@@ -19,6 +19,9 @@ export const messages = {
     discoveryResults: "Keşif sonuçları",
     discoverByTechnology: "Teknolojiye Göre Keşfet",
     discoverByStatus: "Duruma Göre Keşfet",
+    liveStatusUnavailable:
+      "Hukuki durum filtresi canlı EPO keşfinde kullanılamıyor.",
+    unclassified: "Sınıflandırılmamış",
     discoverByYear: "Yıllara Göre Keşfet",
     featured: "Öne Çıkan",
     exploreAll: "Tüm Patentleri Keşfet",
@@ -246,6 +249,9 @@ export const messages = {
     discoveryResults: "Discovery results",
     discoverByTechnology: "Discover by Technology",
     discoverByStatus: "Discover by Status",
+    liveStatusUnavailable:
+      "Legal status filtering is unavailable for live EPO discovery.",
+    unclassified: "Unclassified",
     discoverByYear: "Discover by Year",
     featured: "Featured",
     exploreAll: "Discover All Patents",

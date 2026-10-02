@@ -40,26 +40,29 @@ export default async function DiscoverPage({
   const m = messages[locale];
   const parsed = discoveryQuerySchema.safeParse(await searchParams);
   const query = parsed.success ? parsed.data : discoveryQuerySchema.parse({});
+  const liveDiscovery = patentProvider.source === "epo";
+  const legalStatus = liveDiscovery ? undefined : query.status;
   const filters: DiscoveryFilters = {
     category: query.category,
-    legalStatus: query.status,
+    legalStatus,
     yearRange: query.year ? yearRanges[query.year] : undefined,
     sort: query.sort,
     page: query.page,
-    pageSize: 20,
+    pageSize: liveDiscovery ? 6 : 20,
   };
   const result =
     parsed.success && patentProvider.discoverPatents
       ? await patentProvider.discoverPatents(filters).catch(() => null)
       : null;
   const hasFilters = Boolean(
-    query.category || query.status || query.year || query.sort !== "featured",
+    query.category || legalStatus || query.year || query.sort !== "featured",
   );
   const url = (changes: Record<string, string | number | undefined>) => {
     const values: Record<string, string | number | undefined> = {
       ...query,
       ...changes,
     };
+    if (liveDiscovery) values.status = undefined;
     const params = new URLSearchParams();
     Object.entries(values).forEach(([key, value]) => {
       if (
@@ -111,18 +114,22 @@ export default async function DiscoverPage({
         </div>
         <div>
           <h2>{m.discoverByStatus}</h2>
-          <div className="flex flex-wrap gap-2">
-            {Object.values(LegalStatus).map((status) =>
-              filterLink(
-                url({
-                  status: query.status === status ? undefined : status,
-                  page: 1,
-                }),
-                query.status === status,
-                m.statuses[status],
-              ),
-            )}
-          </div>
+          {liveDiscovery ? (
+            <p className="notice text-sm">{m.liveStatusUnavailable}</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {Object.values(LegalStatus).map((status) =>
+                filterLink(
+                  url({
+                    status: query.status === status ? undefined : status,
+                    page: 1,
+                  }),
+                  query.status === status,
+                  m.statuses[status],
+                ),
+              )}
+            </div>
+          )}
         </div>
         <div>
           <h2>{m.discoverByYear}</h2>
@@ -153,8 +160,8 @@ export default async function DiscoverPage({
           {query.category && (
             <input type="hidden" name="category" value={query.category} />
           )}
-          {query.status && (
-            <input type="hidden" name="status" value={query.status} />
+          {legalStatus && (
+            <input type="hidden" name="status" value={legalStatus} />
           )}
           {query.year && <input type="hidden" name="year" value={query.year} />}
           <label className="min-w-40">

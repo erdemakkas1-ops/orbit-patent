@@ -17,6 +17,17 @@ export const discoveryCategories = [
   "assistive",
 ] as const satisfies readonly DiscoveryCategory[];
 
+export const discoverySearchTerms = {
+  robotics: ["robot", "gripper", "manipulator"],
+  automation: ["automation", "control", "conveyor"],
+  sensors: ["sensor", "detector", "sensing"],
+  electronics: ["electronic", "circuit", "semiconductor"],
+  energy: ["battery", "energy", "power"],
+  mechanical: ["mechanical", "gear", "transmission"],
+  manufacturing: ["manufacturing", "production", "printing"],
+  assistive: ["assistive", "prosthetic", "mobility"],
+} as const satisfies Record<DiscoveryCategory, readonly string[]>;
+
 export const yearRanges = {
   "before-2000": { to: 1999 },
   "2000-2009": { from: 2000, to: 2009 },
@@ -56,14 +67,11 @@ const categoryRules: Array<[DiscoveryCategory, RegExp]> = [
   ["mechanical", /\b(f16h|f16)|mechanical|mekanik|gear|reduktor|rulman/],
 ];
 
-export function categorizePatent(patent: Patent): DiscoveryCategory {
+export function categorizePatent(patent: Patent): DiscoveryCategory | null {
   const corpus = fold(
     JSON.stringify([patent.title, patent.abstract, patent.cpc, patent.ipc]),
   );
-  return (
-    categoryRules.find(([, pattern]) => pattern.test(corpus))?.[0] ??
-    "mechanical"
-  );
+  return categoryRules.find(([, pattern]) => pattern.test(corpus))?.[0] ?? null;
 }
 
 export function featuredScore(patent: Patent) {

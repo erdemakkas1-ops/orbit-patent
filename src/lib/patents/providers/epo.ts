@@ -4,6 +4,7 @@ import type {
   PatentSearch,
   SearchResult,
   LegalEvent,
+  DiscoveryFilters,
 } from "@/types/patent";
 import { EPO_CONFIG } from "./epo/config";
 import { EpoAuth } from "./epo/auth";
@@ -17,6 +18,7 @@ import {
   toRouteIdentifier,
 } from "./epo/identifier";
 import { EpoImageService } from "./epo/images";
+import { discoverySearchTerms, featuredScore } from "@/lib/patents/discovery";
 
 export type EpoResponseMetadata = {
   path: string;
@@ -27,7 +29,6 @@ export type EpoResponseMetadata = {
 };
 
 function logEpoError(metadata: EpoResponseMetadata) {
-  if (process.env.NODE_ENV === "development") return;
   console.error(
     "[EPO OPS ERROR]",
     JSON.stringify({
@@ -198,10 +199,73 @@ export class EpoOpsClient {
   }
 }
 type CacheEntry<T> = { expires: number; value: T };
+
+export const EPO_DISCOVERY_CONCURRENCY = 3;
+
+function hasBibliographicData(patent: Patent) {
+  const publication = patent.publicationNumber.replace(/\s/g, "").toUpperCase();
+  const hasTitle = Object.values(patent.title).some((value) => {
+    const normalized = value.replace(/\s/g, "").toUpperCase();
+    return Boolean(normalized && normalized !== publication);
+  });
+  return Boolean(
+    hasTitle ||
+    patent.abstract.tr ||
+    patent.abstract.en ||
+    patent.publicationDate ||
+    patent.applicationNumber ||
+    patent.applicants.length ||
+    patent.inventors.length ||
+    patent.cpc.length ||
+    patent.ipc.length,
+  );
+}
+
+export async function hydratePatentReferences(
+  references: Patent[],
+  hydrate: (id: string) => Promise<Patent | null>,
+  limit: number,
+  concurrency = EPO_DISCOVERY_CONCURRENCY,
+) {
+  const safeLimit = Math.max(0, limit);
+  const batchSize = Math.min(
+    EPO_DISCOVERY_CONCURRENCY,
+    Math.max(1, concurrency),
+  );
+  const unique = [
+    ...new Map(
+      references.map((patent) => [
+        patent.publicationNumber.replace(/\s/g, "").toUpperCase(),
+        patent,
+      ]),
+    ).values(),
+  ];
+  const hydrated: Patent[] = [];
+  for (let index = 0; index < unique.length && hydrated.length < safeLimit;) {
+    const batch = unique.slice(index, index + batchSize);
+    index += batch.length;
+    const settled = await Promise.allSettled(
+      batch.map((patent) => hydrate(patent.id)),
+    );
+    for (const result of settled) {
+      if (
+        result.status === "fulfilled" &&
+        result.value &&
+        hasBibliographicData(result.value)
+      )
+        hydrated.push(result.value);
+      if (hydrated.length === safeLimit) break;
+    }
+  }
+  return hydrated;
+}
+
 export class EpoOpsPatentProvider implements PatentProvider {
   readonly source = "epo" as const;
   private readonly searchCache = new Map<string, CacheEntry<SearchResult>>();
+  private readonly discoveryCache = new Map<string, CacheEntry<SearchResult>>();
   private readonly detailCache = new Map<string, CacheEntry<Patent | null>>();
+  private featuredCache?: CacheEntry<Patent[]>;
   private readonly images: EpoImageService;
   constructor(readonly client: EpoOpsClient) {
     this.images = new EpoImageService(client);
@@ -210,7 +274,11 @@ export class EpoOpsPatentProvider implements PatentProvider {
     const key = stableCacheKey("epo-search", query);
     const cached = this.searchCache.get(key);
     if (cached && cached.expires > Date.now()) return cached.value;
-    const { q, range } = buildSearchParams(query, EPO_CONFIG.pageSize);
+    const pageSize = Math.max(
+      1,
+      Math.min(EPO_CONFIG.pageSize, query.pageSize ?? EPO_CONFIG.pageSize),
+    );
+    const { q, range } = buildSearchParams(query, pageSize);
     const parsed = parseEpoSearch(
       await this.client.request("published-data/search", { q }, range),
     );
@@ -218,7 +286,7 @@ export class EpoOpsPatentProvider implements PatentProvider {
       patents: parsed.patents,
       total: parsed.total,
       page: query.page,
-      pageSize: EPO_CONFIG.pageSize,
+      pageSize,
       source: "epo" as const,
     };
     this.searchCache.set(key, {
@@ -226,6 +294,77 @@ export class EpoOpsPatentProvider implements PatentProvider {
       expires: Date.now() + EPO_CONFIG.searchCacheMs,
     });
     return result;
+  }
+  async discoverPatents(filters: DiscoveryFilters): Promise<SearchResult> {
+    if (filters.legalStatus)
+      throw new Error("EPO_LEGAL_STATUS_FILTER_UNAVAILABLE");
+    const key = stableCacheKey("epo-discovery", filters);
+    const cached = this.discoveryCache.get(key);
+    if (cached && cached.expires > Date.now()) return cached.value;
+    const references = await this.searchPatents({
+      anyTerms: filters.category
+        ? discoverySearchTerms[filters.category]
+        : Object.values(discoverySearchTerms).flat(),
+      yearRange: filters.yearRange,
+      sort: filters.sort === "featured" ? "relevance" : filters.sort,
+      page: filters.page,
+      pageSize: filters.pageSize,
+    });
+    const patents = await hydratePatentReferences(
+      references.patents,
+      (id) => this.getPatentById(id),
+      filters.pageSize,
+    );
+    patents.sort((a, b) => {
+      if (filters.sort === "featured")
+        return featuredScore(b) - featuredScore(a) || a.id.localeCompare(b.id);
+      const direction = filters.sort === "oldest" ? 1 : -1;
+      return (
+        direction * a.publicationDate.localeCompare(b.publicationDate) ||
+        a.id.localeCompare(b.id)
+      );
+    });
+    const result = {
+      ...references,
+      patents,
+      pageSize: filters.pageSize,
+    };
+    this.discoveryCache.set(key, {
+      value: result,
+      expires: Date.now() + EPO_CONFIG.searchCacheMs,
+    });
+    return result;
+  }
+  async getFeaturedPatents(limit = 6): Promise<Patent[]> {
+    const safeLimit = Math.max(0, Math.min(6, limit));
+    if (!safeLimit) return [];
+    const cached = this.featuredCache;
+    if (cached && cached.expires > Date.now())
+      return cached.value.slice(0, safeLimit);
+    const candidateLimit = Math.min(6, Math.max(safeLimit, safeLimit * 2));
+    const result = await this.searchPatents({
+      anyTerms: [
+        ...discoverySearchTerms.robotics,
+        ...discoverySearchTerms.sensors,
+        ...discoverySearchTerms.energy,
+      ],
+      sort: "relevance",
+      page: 1,
+      pageSize: candidateLimit,
+    });
+    const featured = await hydratePatentReferences(
+      result.patents,
+      (id) => this.getPatentById(id),
+      candidateLimit,
+    );
+    featured.sort(
+      (a, b) => featuredScore(b) - featuredScore(a) || a.id.localeCompare(b.id),
+    );
+    this.featuredCache = {
+      value: featured,
+      expires: Date.now() + EPO_CONFIG.searchCacheMs,
+    };
+    return featured.slice(0, safeLimit);
   }
   async getPatentById(id: string): Promise<Patent | null> {
     const identifier = parsePatentIdentifier(id);

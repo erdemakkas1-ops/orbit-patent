@@ -51,9 +51,12 @@ export interface Patent {
 }
 export interface PatentSearch {
   q?: string;
+  anyTerms?: readonly string[];
+  pageSize?: number;
   cpc?: string;
   ipc?: string;
   year?: number;
+  yearRange?: { from?: number; to?: number };
   status?: LegalStatus;
   sort: "newest" | "oldest" | "relevance";
   page: number;

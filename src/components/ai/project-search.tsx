@@ -24,6 +24,9 @@ export function ProjectSearch({ locale }: { locale: Locale }) {
   const [length, setLength] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [selectedPatentId, setSelectedPatentId] = useState<string | null>(null);
+  const relatedCategory = result?.results[0]
+    ? categorizePatent(result.results[0].patent)
+    : null;
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const text = String(new FormData(e.currentTarget).get("project"));
@@ -151,7 +154,7 @@ export function ProjectSearch({ locale }: { locale: Locale }) {
             {result.results[0] && (
               <Link
                 className="card-action mb-5 inline-block text-sm font-semibold"
-                href={`/${locale}/discover?category=${categorizePatent(result.results[0].patent)}`}
+                href={`/${locale}/discover${relatedCategory ? `?category=${relatedCategory}` : ""}`}
               >
                 {m.relatedDiscovery}
               </Link>
