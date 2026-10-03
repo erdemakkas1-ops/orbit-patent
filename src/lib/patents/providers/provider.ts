@@ -15,6 +15,7 @@ export interface PatentProvider {
   getPatentDrawingPage?(
     id: string,
     page: number,
+    variant?: "full" | "card",
   ): Promise<{ body: Uint8Array; contentType: "image/png" }>;
   discoverPatents?(filters: DiscoveryFilters): Promise<SearchResult>;
   getFeaturedPatents?(limit?: number): Promise<Patent[]>;

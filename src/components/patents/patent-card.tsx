@@ -20,6 +20,10 @@ export function PatentCard({
 }) {
   const m = messages[locale];
   const display = patentDisplay(p, locale, m.noData);
+  const drawing = p.drawings[0];
+  const drawingUrl = drawing?.url.startsWith("/api/patents/")
+    ? `${drawing.url}${drawing.url.includes("?") ? "&" : "?"}variant=card`
+    : drawing?.url;
   const safeScore =
     score === undefined ? undefined : Math.round(finiteClamp(score, 0, 100, 0));
   return (
@@ -28,11 +32,11 @@ export function PatentCard({
       className="flex flex-col overflow-hidden"
     >
       <div className="card-media flex h-32 items-center justify-center border-b">
-        {p.drawings[0] ? (
+        {drawing && drawingUrl ? (
           <Image
             className="h-full w-full object-contain"
-            src={p.drawings[0].url}
-            alt={safeText(p.drawings[0].caption[locale], m.noDrawing, 200)}
+            src={drawingUrl}
+            alt={safeText(drawing.caption[locale], m.noDrawing, 200)}
             width={290}
             height={136}
             loading="lazy"

@@ -449,8 +449,8 @@ export class EpoOpsPatentProvider implements PatentProvider {
   getPatentDrawings(id: string) {
     return this.images.getDrawings(id);
   }
-  getPatentDrawingPage(id: string, page: number) {
-    return this.images.getDrawingPage(id, page);
+  getPatentDrawingPage(id: string, page: number, variant?: "full" | "card") {
+    return this.images.getDrawingPage(id, page, variant);
   }
   private getFamilyMetadata(id: string) {
     const identifier = parsePatentIdentifier(id);

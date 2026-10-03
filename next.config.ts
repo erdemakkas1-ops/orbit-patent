@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
+  images: {
+    localPatterns: [{ pathname: "/api/patents/**" }],
+  },
   async headers() {
     return [
       {

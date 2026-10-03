@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import sharp from "sharp";
 import { MockPatentProvider } from "../src/lib/patents/providers/mock";
 import { MockAiProvider } from "../src/lib/ai/mock";
 import { resolvePatentLegalStatus } from "../src/lib/patents/legal-status/resolve";
@@ -45,8 +46,10 @@ import {
   toEpodocIdentifier,
 } from "../src/lib/patents/providers/epo/identifier";
 import {
+  CARD_TRIM_THRESHOLD,
   EpoImageService,
   parseEpoImageAvailability,
+  trimPatentDrawingForCard,
 } from "../src/lib/patents/providers/epo/images";
 import {
   finiteClamp,
@@ -427,6 +430,116 @@ test("EPO drawing service rejects invalid pages and upstream content types", asy
     service.getDrawingPage("EP1234567A1", 1),
     /EPO_DRAWING_INVALID_CONTENT/,
   );
+});
+test("card drawing variant trims white and near-white margins conservatively", async () => {
+  for (const background of [255, 246]) {
+    const original = await sharp({
+      create: {
+        width: 400,
+        height: 300,
+        channels: 3,
+        background: { r: background, g: background, b: background },
+      },
+    })
+      .composite([
+        {
+          input: {
+            create: {
+              width: 120,
+              height: 80,
+              channels: 3,
+              background: { r: 35, g: 35, b: 35 },
+            },
+          },
+          left: 140,
+          top: 110,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const card = await trimPatentDrawingForCard(original);
+    const metadata = await sharp(card).metadata();
+    assert.equal(metadata.format, "png");
+    assert.equal(metadata.width, 136);
+    assert.equal(metadata.height, 96);
+  }
+  assert.equal(CARD_TRIM_THRESHOLD, 18);
+});
+test("card drawing trim falls back when the detected content is suspiciously tiny", async () => {
+  const original = await sharp({
+    create: {
+      width: 400,
+      height: 300,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .composite([
+      {
+        input: {
+          create: {
+            width: 4,
+            height: 4,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 198,
+        top: 148,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  assert.equal(Buffer.from(card).equals(original), true);
+});
+test("card and full drawing variants share one upstream page and cache separately", async () => {
+  const tiff = await sharp({
+    create: {
+      width: 400,
+      height: 300,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .composite([
+      {
+        input: {
+          create: {
+            width: 160,
+            height: 100,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 120,
+        top: 100,
+      },
+    ])
+    .tiff()
+    .toBuffer();
+  let binaryCalls = 0;
+  const service = new EpoImageService({
+    request: async () => readFileSync("tests/fixtures/epo-images.xml", "utf8"),
+    requestBinary: async () => {
+      binaryCalls++;
+      return { body: new Uint8Array(tiff), contentType: "application/tiff" };
+    },
+  });
+  const full = await service.getDrawingPage("EP1234567A1", 1, "full");
+  const card = await service.getDrawingPage("EP1234567A1", 1, "card");
+  assert.equal(binaryCalls, 1);
+  const fullMetadata = await sharp(full.body).metadata();
+  assert.equal(fullMetadata.format, "png");
+  assert.equal(fullMetadata.width, 400);
+  assert.equal(fullMetadata.height, 300);
+  const cardMetadata = await sharp(card.body).metadata();
+  assert.equal(cardMetadata.format, "png");
+  assert.ok((cardMetadata.width ?? 400) < 400);
+  assert.ok((cardMetadata.height ?? 300) < 300);
+  assert.equal(await service.getDrawingPage("EP1234567A1", 1, "full"), full);
+  assert.equal(await service.getDrawingPage("EP1234567A1", 1, "card"), card);
+  assert.equal(binaryCalls, 1);
 });
 test("EPO auth caches a token and coalesces concurrent requests", async () => {
   const original = globalThis.fetch;

@@ -27,6 +27,59 @@ export type DrawingAvailability = {
   pages: number[];
 };
 
+export type DrawingVariant = "full" | "card";
+
+export const CARD_TRIM_THRESHOLD = 18;
+const CARD_TRIM_BORDER = 8;
+const CARD_TRIM_MIN_DIMENSION = 64;
+const CARD_TRIM_MIN_RATIO = 0.025;
+const CARD_TRIM_MIN_AREA_RATIO = 0.005;
+
+export async function trimPatentDrawingForCard(body: Uint8Array) {
+  const original = Buffer.from(body);
+  try {
+    const originalMetadata = await sharp(original).metadata();
+    const originalWidth = originalMetadata.width ?? 0;
+    const originalHeight = originalMetadata.height ?? 0;
+    if (!originalWidth || !originalHeight) return new Uint8Array(original);
+    const trimmed = await sharp(original)
+      .trim({
+        background: { r: 255, g: 255, b: 255 },
+        threshold: CARD_TRIM_THRESHOLD,
+      })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    const width = trimmed.info.width;
+    const height = trimmed.info.height;
+    const areaRatio =
+      (width * height) / Math.max(1, originalWidth * originalHeight);
+    const suspicious =
+      width < CARD_TRIM_MIN_DIMENSION ||
+      height < CARD_TRIM_MIN_DIMENSION ||
+      width / originalWidth < CARD_TRIM_MIN_RATIO ||
+      height / originalHeight < CARD_TRIM_MIN_RATIO ||
+      areaRatio < CARD_TRIM_MIN_AREA_RATIO;
+    const unchanged =
+      width >= originalWidth - 2 && height >= originalHeight - 2;
+    if (suspicious || unchanged) return new Uint8Array(original);
+    return new Uint8Array(
+      await sharp(trimmed.data)
+        .extend({
+          top: CARD_TRIM_BORDER,
+          right: CARD_TRIM_BORDER,
+          bottom: CARD_TRIM_BORDER,
+          left: CARD_TRIM_BORDER,
+          background: { r: 255, g: 255, b: 255 },
+        })
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
+        .png()
+        .toBuffer(),
+    );
+  } catch {
+    return new Uint8Array(original);
+  }
+}
+
 const parser = new XMLParser({
   ignoreAttributes: false,
   removeNSPrefix: true,
@@ -166,7 +219,11 @@ export class EpoImageService {
     }));
   }
 
-  async getDrawingPage(id: string, page: number) {
+  async getDrawingPage(
+    id: string,
+    page: number,
+    variant: DrawingVariant = "full",
+  ) {
     if (
       !Number.isInteger(page) ||
       page < 1 ||
@@ -178,21 +235,40 @@ export class EpoImageService {
     if (!availability || !upstreamPage)
       throw new Error("EPO_DRAWING_NOT_FOUND");
     const routeId = toRouteIdentifier(availability.identifier);
-    const cacheKey = `${routeId}:${page}`;
+    const cacheKey = `${routeId}:${page}:${variant}`;
     const cached = this.pageCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) return cached.value;
+    const fullCacheKey = `${routeId}:${page}:full`;
+    const fullCached = this.pageCache.get(fullCacheKey);
+    let full =
+      fullCached?.expires && fullCached.expires > Date.now()
+        ? fullCached.value
+        : undefined;
     const { country, documentNumber, kindCode } = availability.identifier;
-    const response = await this.client.requestBinary(
-      `published-data/images/${country}/${documentNumber}/${kindCode}/${availability.imageType}`,
-      "application/tiff",
-      String(upstreamPage),
-    );
-    if (!/^application\/tiff(?:;|$)/i.test(response.contentType))
-      throw new Error("EPO_DRAWING_INVALID_CONTENT");
-    const body = new Uint8Array(
-      await sharp(Buffer.from(response.body)).png().toBuffer(),
-    );
-    const result = { body, contentType: "image/png" as const };
+    if (!full) {
+      const response = await this.client.requestBinary(
+        `published-data/images/${country}/${documentNumber}/${kindCode}/${availability.imageType}`,
+        "application/tiff",
+        String(upstreamPage),
+      );
+      if (!/^application\/tiff(?:;|$)/i.test(response.contentType))
+        throw new Error("EPO_DRAWING_INVALID_CONTENT");
+      full = {
+        body: new Uint8Array(
+          await sharp(Buffer.from(response.body)).png().toBuffer(),
+        ),
+        contentType: "image/png" as const,
+      };
+      this.pageCache.set(fullCacheKey, {
+        value: full,
+        expires: Date.now() + EPO_CONFIG.drawingPageCacheMs,
+      });
+    }
+    if (variant === "full") return full;
+    const result = {
+      body: await trimPatentDrawingForCard(full.body),
+      contentType: "image/png" as const,
+    };
     this.pageCache.set(cacheKey, {
       value: result,
       expires: Date.now() + EPO_CONFIG.drawingPageCacheMs,
