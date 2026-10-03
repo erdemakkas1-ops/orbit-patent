@@ -1,5 +1,10 @@
 export type Locale = "tr" | "en";
 export type Localized = Record<Locale, string>;
+export interface PatentTextTranslation {
+  title: string;
+  abstract: string;
+  description: string;
+}
 export enum LegalStatus {
   ACTIVE = "ACTIVE",
   EXPIRED = "EXPIRED",
@@ -35,6 +40,8 @@ export interface Patent {
   title: Localized;
   abstract: Localized;
   description: Localized;
+  originalLanguage?: string;
+  translations?: Partial<Record<Locale, PatentTextTranslation>>;
   inventors: string[];
   applicants: string[];
   publicationDate: string;

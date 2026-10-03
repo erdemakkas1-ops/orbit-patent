@@ -69,6 +69,19 @@ const overlap = (needles: string[], haystack: string) =>
     ? needles.filter((x) => fold(haystack).includes(fold(x))).length /
       needles.length
     : 0;
+/** Average share of each phrase's words found in the text ("pet feeder" half-matches "cat feeder"). */
+const coverage = (phrases: string[], haystack: string) => {
+  const words = tokens(haystack);
+  const shares = phrases
+    .map((phrase) => [...tokens(phrase)])
+    .filter((parts) => parts.length)
+    .map(
+      (parts) => parts.filter((part) => words.has(part)).length / parts.length,
+    );
+  return shares.length
+    ? shares.reduce((sum, share) => sum + share, 0) / shares.length
+    : 0;
+};
 const similarity = (a: string, b: string) => {
   const aa = tokens(a),
     bb = tokens(b);
@@ -80,8 +93,15 @@ export function calculateRelevance(intent: ProjectIntent, patent: Patent) {
   const title = `${patent.title.tr} ${patent.title.en}`;
   const abstract = `${patent.abstract.tr} ${patent.abstract.en}`;
   const corpus = `${title} ${abstract}`;
+  // Keywords follow the UI language while patent text is mostly English;
+  // the English search queries give a Turkish intent something to match.
+  const queries = intent.searchQueries;
+  const terms = [...intent.keywords, ...intent.concepts, ...queries].join(" ");
   const parts = {
-    keyword: overlap(intent.keywords, corpus),
+    keyword: Math.max(
+      overlap(intent.keywords, corpus),
+      coverage(queries, corpus),
+    ),
     concept: overlap(intent.concepts, corpus),
     cpc: intent.suggestedCpc.length
       ? intent.suggestedCpc.filter((c) =>
@@ -93,14 +113,8 @@ export function calculateRelevance(intent: ProjectIntent, patent: Patent) {
           patent.ipc.some((p) => fold(p).startsWith(fold(c))),
         ).length / intent.suggestedIpc.length
       : 0,
-    title: similarity(
-      [...intent.keywords, ...intent.concepts].join(" "),
-      title,
-    ),
-    abstract: similarity(
-      [...intent.keywords, ...intent.concepts].join(" "),
-      abstract,
-    ),
+    title: similarity(terms, title),
+    abstract: similarity(terms, abstract),
   };
   const score =
     parts.keyword * 20 +

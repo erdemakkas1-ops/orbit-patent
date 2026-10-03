@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import sharp from "sharp";
 import { MockPatentProvider } from "../src/lib/patents/providers/mock";
 import { MockAiProvider } from "../src/lib/ai/mock";
 import { resolvePatentLegalStatus } from "../src/lib/patents/legal-status/resolve";
@@ -12,7 +13,15 @@ import {
   yearRanges,
 } from "../src/lib/patents/discovery";
 import { mockPatents } from "../src/data/mock-patents";
-import { intentSchema, materialSchema } from "../src/types/ai";
+import {
+  formatPublicationNumber,
+  readableTitle,
+} from "../src/lib/patents/format";
+import {
+  intentSchema,
+  materialSchema,
+  patentTranslationBatchSchema,
+} from "../src/types/ai";
 import {
   calculateCost,
   calculateDifficulty,
@@ -41,8 +50,12 @@ import {
   toEpodocIdentifier,
 } from "../src/lib/patents/providers/epo/identifier";
 import {
+  CARD_TRIM_THRESHOLD,
   EpoImageService,
   parseEpoImageAvailability,
+  trimPatentDrawingForCard,
+  renderCardDrawing,
+  CARD_RENDER_BOX,
 } from "../src/lib/patents/providers/epo/images";
 import {
   finiteClamp,
@@ -60,8 +73,22 @@ import {
 import { publicErrorCode } from "../src/lib/errors";
 import { buildMetadata, seoCopy, siteUrl } from "../src/lib/seo";
 import { stableCacheKey } from "../src/lib/cache-key";
+import {
+  CARD_DRAWING_VERSION,
+  cardDrawingUrl,
+} from "../src/lib/patents/drawing-url";
 import { admitAiRequest } from "../src/lib/rate-limit";
 import { normalizeProjectText } from "../src/lib/ai/input";
+import {
+  clearTranslationCacheForTests,
+  localizePatentsWithProvider,
+  patentTranslationCacheKey,
+} from "../src/lib/ai/translation-core";
+import { AiCreditCircuit, safeAiErrorDetails } from "../src/lib/ai/error-log";
+import {
+  mapEpoLegalEvent,
+  parseEpoFamilyLegal,
+} from "../src/lib/patents/providers/epo/family";
 const event = (
   kind: LegalEvent["kind"],
   date: string,
@@ -316,6 +343,64 @@ test("EPO parser normalizes multilingual namespace XML and missing fields", () =
   );
   assert.equal(broken.patents[0].publicationNumber, "EP");
 });
+test("EPO parser preserves real language variants without copying English into Turkish", () => {
+  const result = parseEpoBiblio(`
+    <world-patent-data><exchange-documents><exchange-document>
+      <bibliographic-data>
+        <publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>42</doc-number><kind>A1</kind></document-id></publication-reference>
+        <invention-title lang="en">Smart gripper</invention-title>
+        <invention-title lang="tr">Akıllı tutucu</invention-title>
+      </bibliographic-data>
+      <abstract lang="en"><p>Force feedback.</p></abstract>
+      <abstract lang="tr"><p>Kuvvet geri bildirimi.</p></abstract>
+    </exchange-document></exchange-documents></world-patent-data>`);
+  assert.equal(result?.title.en, "Smart gripper");
+  assert.equal(result?.title.tr, "Akıllı tutucu");
+  assert.equal(result?.abstract.en, "Force feedback.");
+  assert.equal(result?.abstract.tr, "Kuvvet geri bildirimi.");
+  assert.doesNotMatch(result?.abstract.en ?? "", /en|lang/);
+
+  const englishOnly = parseEpoBiblio(`
+    <world-patent-data><exchange-documents><exchange-document>
+      <bibliographic-data>
+        <publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>43</doc-number><kind>A1</kind></document-id></publication-reference>
+        <invention-title lang="en">Original title</invention-title>
+      </bibliographic-data>
+      <abstract lang="en"><p>Original abstract.</p></abstract>
+    </exchange-document></exchange-documents></world-patent-data>`);
+  assert.equal(englishOnly?.title.en, "Original title");
+  assert.equal(englishOnly?.title.tr, "");
+  assert.equal(englishOnly?.abstract.tr, "");
+});
+test("EPO parser keeps CPC leading zeros and lists each party once", () => {
+  const result = parseEpoBiblio(`
+    <world-patent-data><exchange-documents><exchange-document>
+      <bibliographic-data>
+        <publication-reference><document-id document-id-type="docdb"><country>US</country><doc-number>20260295860</doc-number><kind>A1</kind></document-id></publication-reference>
+        <parties>
+          <applicants>
+            <applicant sequence="1" data-format="epodoc"><applicant-name><name>BOSTON DYNAMICS INC [US]</name></applicant-name></applicant>
+            <applicant sequence="1" data-format="original"><applicant-name><name>Boston Dynamics, Inc.</name></applicant-name></applicant>
+          </applicants>
+          <inventors>
+            <inventor sequence="1" data-format="epodoc"><inventor-name><name>TAYLOR IAN [US]</name></inventor-name></inventor>
+            <inventor sequence="1" data-format="original"><inventor-name><name>Taylor, Ian</name></inventor-name></inventor>
+          </inventors>
+        </parties>
+        <patent-classifications>
+          <patent-classification>
+            <classification-scheme scheme="CPCI" />
+            <section>B</section><class>25</class><subclass>J</subclass>
+            <main-group>13</main-group><subgroup>084</subgroup>
+          </patent-classification>
+        </patent-classifications>
+        <invention-title lang="en">ROBOTIC FOOT SENSOR</invention-title>
+      </bibliographic-data>
+    </exchange-document></exchange-documents></world-patent-data>`);
+  assert.deepEqual(result?.cpc, ["B25J13/084"]);
+  assert.deepEqual(result?.applicants, ["Boston Dynamics, Inc."]);
+  assert.deepEqual(result?.inventors, ["Taylor, Ian"]);
+});
 test("EPO search parser keeps publication-reference-only results", () => {
   const multiple = parseEpoSearch(
     readFileSync(
@@ -384,6 +469,239 @@ test("EPO drawing service rejects invalid pages and upstream content types", asy
     service.getDrawingPage("EP1234567A1", 1),
     /EPO_DRAWING_INVALID_CONTENT/,
   );
+});
+test("card drawing variant trims white and near-white margins conservatively", async () => {
+  for (const background of [255, 246]) {
+    const original = await sharp({
+      create: {
+        width: 400,
+        height: 300,
+        channels: 3,
+        background: { r: background, g: background, b: background },
+      },
+    })
+      .composite([
+        {
+          input: {
+            create: {
+              width: 120,
+              height: 80,
+              channels: 3,
+              background: { r: 35, g: 35, b: 35 },
+            },
+          },
+          left: 140,
+          top: 110,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const card = await trimPatentDrawingForCard(original);
+    const metadata = await sharp(card).metadata();
+    assert.equal(metadata.format, "png");
+    assert.equal(metadata.width, 136);
+    assert.equal(metadata.height, 96);
+  }
+  assert.equal(CARD_TRIM_THRESHOLD, 18);
+});
+test("card drawing trim falls back when the detected content is suspiciously tiny", async () => {
+  const original = await sharp({
+    create: {
+      width: 400,
+      height: 300,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .composite([
+      {
+        input: {
+          create: {
+            width: 4,
+            height: 4,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 198,
+        top: 148,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  assert.equal(Buffer.from(card).equals(original), true);
+});
+test("card drawing trim excludes a separated standard page header", async () => {
+  const original = await sharp({
+    create: {
+      width: 400,
+      height: 600,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .composite([
+      {
+        input: {
+          create: {
+            width: 250,
+            height: 20,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 75,
+        top: 25,
+      },
+      {
+        input: {
+          create: {
+            width: 220,
+            height: 300,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 90,
+        top: 180,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  const metadata = await sharp(card).metadata();
+  assert.equal(metadata.width, 236);
+  assert.equal(metadata.height, 316);
+});
+test("card drawing trim keeps a narrow figure label at the top", async () => {
+  const original = await sharp({
+    create: { width: 400, height: 600, channels: 3, background: "#ffffff" },
+  })
+    .composite([
+      {
+        input: { create: { width: 60, height: 16, channels: 3, background: "#000000" } },
+        left: 40,
+        top: 25,
+      },
+      {
+        input: { create: { width: 220, height: 300, channels: 3, background: "#000000" } },
+        left: 90,
+        top: 180,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  const metadata = await sharp(card).metadata();
+  assert.equal(metadata.height, 471); // label at 25 through the drawing at 480, + borders
+});
+test("card drawing trim ignores a scanner line along the page edge", async () => {
+  const original = await sharp({
+    create: { width: 1000, height: 1400, channels: 3, background: "#ffffff" },
+  })
+    .composite([
+      {
+        input: { create: { width: 3, height: 1200, channels: 3, background: "#000000" } },
+        left: 978,
+        top: 100,
+      },
+      {
+        input: { create: { width: 400, height: 500, channels: 3, background: "#000000" } },
+        left: 300,
+        top: 450,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  const metadata = await sharp(card).metadata();
+  assert.equal(metadata.width, 416);
+  assert.equal(metadata.height, 516);
+});
+test("card drawing render fits the card box as lossless PNG", async () => {
+  const page = await sharp({
+    create: { width: 2550, height: 3300, channels: 3, background: "#ffffff" },
+  })
+    .composite([
+      {
+        input: { create: { width: 2000, height: 2, channels: 3, background: "#000000" } },
+        left: 200,
+        top: 1600,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await renderCardDrawing(page);
+  const metadata = await sharp(card).metadata();
+  assert.equal(metadata.format, "png");
+  assert.ok((metadata.width ?? 0) <= CARD_RENDER_BOX.width);
+  assert.equal(metadata.height, CARD_RENDER_BOX.height);
+  // the 2px stroke survives the ~6x downscale as a dark line
+  const { data, info } = await sharp(card)
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let darkest = 255;
+  for (let i = 0; i < info.width * info.height; i++)
+    darkest = Math.min(darkest, data[i]);
+  assert.ok(darkest < 90, `darkest pixel ${darkest}`);
+});
+test("card and full drawing variants share one upstream page and cache separately", async () => {
+  const tiff = await sharp({
+    create: {
+      width: 400,
+      height: 300,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .composite([
+      {
+        input: {
+          create: {
+            width: 160,
+            height: 100,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 120,
+        top: 100,
+      },
+    ])
+    .tiff()
+    .toBuffer();
+  let binaryCalls = 0;
+  const service = new EpoImageService({
+    request: async () => readFileSync("tests/fixtures/epo-images.xml", "utf8"),
+    requestBinary: async () => {
+      binaryCalls++;
+      return { body: new Uint8Array(tiff), contentType: "application/tiff" };
+    },
+  });
+  const full = await service.getDrawingPage("EP1234567A1", 1, "full");
+  const card = await service.getDrawingPage("EP1234567A1", 1, "card");
+  assert.equal(binaryCalls, 1);
+  const fullMetadata = await sharp(full.body).metadata();
+  assert.equal(fullMetadata.format, "png");
+  assert.equal(fullMetadata.width, 400);
+  assert.equal(fullMetadata.height, 300);
+  const cardMetadata = await sharp(card.body).metadata();
+  assert.equal(cardMetadata.format, "png");
+  assert.ok((cardMetadata.width ?? 400) < 400);
+  assert.ok((cardMetadata.height ?? 300) < 300);
+  assert.equal(await service.getDrawingPage("EP1234567A1", 1, "full"), full);
+  assert.equal(await service.getDrawingPage("EP1234567A1", 1, "card"), card);
+  assert.equal(binaryCalls, 1);
+});
+test("card drawing URLs use a stable cache version without changing static assets", () => {
+  assert.equal(CARD_DRAWING_VERSION, "5");
+  assert.equal(
+    cardDrawingUrl("/api/patents/EP123A1/drawings/1"),
+    "/api/patents/EP123A1/drawings/1?variant=card&v=5",
+  );
+  assert.equal(cardDrawingUrl("/drawings/mock.svg"), "/drawings/mock.svg");
 });
 test("EPO auth caches a token and coalesces concurrent requests", async () => {
   const original = globalThis.fetch;
@@ -609,7 +927,7 @@ test("EPO detail does not retry DOCDB after an upstream 5xx", async () => {
   );
   assert.equal(calls, 1);
 });
-test("EPO detail exposes a safe failure after expected formats return 404", async () => {
+test("EPO detail reports a missing patent after expected formats return 404", async () => {
   let calls = 0;
   const provider = new EpoOpsPatentProvider({
     request: async () => {
@@ -617,14 +935,22 @@ test("EPO detail exposes a safe failure after expected formats return 404", asyn
       throw new EpoOpsHttpError(404, "SERVER.EntityNotFound: No results found");
     },
   } as never);
-  await assert.rejects(
-    provider.getPatentById("EP1234567A1"),
-    (error: unknown) =>
-      error instanceof EpoOpsHttpError &&
-      error.status === 404 &&
-      error.message === "EPO_UPSTREAM_UNAVAILABLE",
-  );
+  assert.equal(await provider.getPatentById("EP1234567A1"), null);
   assert.equal(calls, 2);
+});
+test("EPO search treats a 404 'No results found' as an empty result", async () => {
+  const provider = new EpoOpsPatentProvider({
+    request: async () => {
+      throw new EpoOpsHttpError(404, "SERVER.EntityNotFound: No results found");
+    },
+  } as never);
+  const result = await provider.searchPatents({
+    q: "no such words",
+    sort: "relevance",
+    page: 1,
+  });
+  assert.equal(result.total, 0);
+  assert.deepEqual(result.patents, []);
 });
 test("EPO detail keeps working when drawing metadata is empty", async () => {
   const provider = new EpoOpsPatentProvider({
@@ -663,6 +989,154 @@ test("mock fallback is disabled in production", () => {
 test("Zod rejects incomplete AI output", () => {
   assert.throws(() => intentSchema.parse({ keywords: ["robot"] }));
   assert.throws(() => materialSchema.parse({ name: "Sensor", quantity: 0 }));
+});
+test("translation structured output validates indexes and text", () => {
+  assert.equal(
+    patentTranslationBatchSchema.parse({
+      items: [
+        {
+          index: 0,
+          title: "Başlık",
+          abstract: "Özet",
+          description: "Açıklama",
+        },
+      ],
+    }).items[0].title,
+    "Başlık",
+  );
+  assert.throws(() =>
+    patentTranslationBatchSchema.parse({ items: [{ index: -1, title: "" }] }),
+  );
+});
+test("Turkish patent localization batches cache misses and reuses per-patent cache", async () => {
+  clearTranslationCacheForTests();
+  let calls = 0;
+  let batchSize = 0;
+  const provider = {
+    source: "openai" as const,
+    model: "gpt-4.1-mini",
+    async translatePatentTexts(items: unknown[]) {
+      calls += 1;
+      batchSize = items.length;
+      return items.map((_item, index) => ({
+        index,
+        title: `Türkçe ${index}`,
+        abstract: `Özet ${index}`,
+        description: `Açıklama ${index}`,
+      }));
+    },
+  };
+  const patents = mockPatents.slice(0, 2).map((patent, index) => ({
+    ...patent,
+    publicationNumber: `CACHE-${index}`,
+    title: { tr: "", en: `English ${index}` },
+    abstract: { tr: "", en: `Abstract ${index}` },
+    description: { tr: "", en: `Description ${index}` },
+  }));
+  const first = await localizePatentsWithProvider(patents, "tr", provider);
+  const second = await localizePatentsWithProvider(patents, "tr", provider);
+  assert.equal(calls, 1);
+  assert.equal(batchSize, 2);
+  assert.equal(first[1].translations?.tr?.title, "Türkçe 1");
+  assert.equal(second[0].translations?.tr?.abstract, "Özet 0");
+  assert.equal(patents[0].title.en, "English 0");
+  assert.equal(patents[0].translations, undefined);
+});
+test("translation failure falls back to original source and cache keys include model and source hash", async () => {
+  clearTranslationCacheForTests();
+  const patent = {
+    ...mockPatents[0],
+    publicationNumber: "FALLBACK-1",
+    title: { tr: "", en: "Original" },
+    abstract: { tr: "", en: "Original abstract" },
+    description: { tr: "", en: "Original description" },
+  };
+  const failing = {
+    source: "openai" as const,
+    model: "gpt-4.1-mini",
+    async translatePatentTexts() {
+      throw new Error("upstream unavailable");
+    },
+  };
+  const localized = await localizePatentsWithProvider([patent], "tr", failing);
+  assert.equal(localized[0], patent);
+  assert.notEqual(
+    patentTranslationCacheKey(patent, "tr", failing),
+    patentTranslationCacheKey(
+      { ...patent, title: { ...patent.title, en: "Changed" } },
+      "tr",
+      failing,
+    ),
+  );
+  assert.notEqual(
+    patentTranslationCacheKey(patent, "tr", failing),
+    patentTranslationCacheKey(patent, "tr", { ...failing, model: "other" }),
+  );
+});
+test("display prefers real Turkish, then cached translation, while English stays original", () => {
+  const patent = {
+    ...mockPatents[0],
+    title: { tr: "Gerçek Türkçe", en: "Original English" },
+    abstract: { tr: "", en: "Original abstract" },
+    description: { tr: "", en: "Original description" },
+    translations: {
+      tr: {
+        title: "Translated title",
+        abstract: "Çevrilmiş özet",
+        description: "Çevrilmiş açıklama",
+      },
+    },
+  };
+  assert.equal(patentDisplay(patent, "tr", "Yok").title, "Gerçek Türkçe");
+  assert.equal(patentDisplay(patent, "tr", "Yok").abstract, "Çevrilmiş özet");
+  assert.equal(patentDisplay(patent, "en", "None").title, "Original English");
+});
+test("safe AI logs redact credentials and keep diagnostic fields", () => {
+  const error = Object.assign(new Error("Invalid key sk-supersecret123456"), {
+    status: 401,
+    code: "invalid_api_key",
+    request_id: "req_123",
+  });
+  const details = safeAiErrorDetails(
+    error,
+    "project_intent",
+    "gpt-4.1-mini",
+    12,
+  );
+  assert.equal(details.status, 401);
+  assert.equal(details.code, "invalid_api_key");
+  assert.equal(details.requestId, "req_123");
+  assert.doesNotMatch(JSON.stringify(details), /supersecret/);
+});
+test("AI credit circuit fails fast for a bounded cooldown and can recover", () => {
+  const circuit = new AiCreditCircuit(1000);
+  circuit.observe({ code: "credit_balance_exhausted" }, 100);
+  assert.throws(() => circuit.assertAvailable(500), /AI_CREDIT_EXHAUSTED/);
+  assert.doesNotThrow(() => circuit.assertAvailable(1101));
+});
+test("AI credit circuit coalesces the first request while credit is unknown", async () => {
+  const circuit = new AiCreditCircuit(1000);
+  const releaseProbe = await circuit.enter();
+  let waiting = true;
+  const second = circuit.enter().finally(() => {
+    waiting = false;
+  });
+  await Promise.resolve();
+  assert.equal(waiting, true);
+  circuit.observe({ code: "credit_balance_exhausted" });
+  releaseProbe();
+  await assert.rejects(second, /AI_CREDIT_EXHAUSTED/);
+});
+test("EPO family/legal parser deduplicates members and maps only conservative events", () => {
+  const parsed = parseEpoFamilyLegal(
+    `<ops:world-patent-data xmlns:ops="x"><ops:patent-family><ops:family-member><publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>1000000</doc-number><kind>A1</kind></document-id></publication-reference><ops:legal code="FG" desc="GRANT OF PATENT"><ops:L001EP desc="Country Code">EP</ops:L001EP><ops:L007EP desc="Gazette DATE">2003-08-15</ops:L007EP></ops:legal></ops:family-member><ops:family-member><publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>1000000</doc-number><kind>A1</kind></document-id></publication-reference><ops:legal code="AX" desc="DESIGNATED CONTRACTING STATES"><ops:L001EP desc="Country Code">EP</ops:L001EP><ops:L007EP desc="Gazette DATE">2004-01-02</ops:L007EP></ops:legal></ops:family-member></ops:patent-family></ops:world-patent-data>`,
+  );
+  assert.deepEqual(parsed.family, [
+    { publicationNumber: "EP1000000A1", country: "EP" },
+  ]);
+  assert.equal(parsed.legalEvents[0].kind, "GRANTED");
+  assert.equal(parsed.legalEvents[1].kind, "UNMAPPED");
+  assert.equal(mapEpoLegalEvent("RER", "CEASED AS TO NATIONAL LAW"), "LAPSED");
 });
 test("cost values are finite, non-negative and ordered", () => {
   const result = calculateCost(
@@ -1047,26 +1521,25 @@ test("hero copy is localized with the ORBIT design direction", async () => {
   );
 });
 
-test("patent cards expose reusable selected and accessible focus states", () => {
+test("patent cards expose one accessible full-card link", () => {
   const wrapper = readFileSync(
     "src/components/ui/expanding-patent-card.tsx",
     "utf8",
   );
   const patentCard = readFileSync(
-    "src/components/patents/patent-card.tsx",
-    "utf8",
-  );
-  const projectSearch = readFileSync(
-    "src/components/ai/project-search.tsx",
+    "src/components/patents/patent-specimen.tsx",
     "utf8",
   );
   const css = readFileSync("src/app/globals.css", "utf8");
-  assert.match(wrapper, /data-selected/);
-  assert.match(patentCard, /aria-pressed=\{selected\}/);
-  assert.match(projectSearch, /selectedPatentId/);
+  assert.match(wrapper, /<Link className="patent-card-link"/);
+  assert.match(wrapper, /href=\{href\}/);
+  assert.match(wrapper, /aria-label=\{ariaLabel\}/);
+  assert.doesNotMatch(patentCard, /<Link|<button|m\.details/);
+  assert.match(patentCard, /specimen-plate/);
+  assert.match(patentCard, /cardDrawingUrl\(drawing\.url\)/);
   assert.match(css, /\.expanding-patent-card:focus-within/);
   assert.match(css, /prefers-reduced-motion: reduce/);
-  assert.doesNotMatch(projectSearch + wrapper, /pointermove/i);
+  assert.doesNotMatch(wrapper, /pointermove/i);
 });
 
 test("AI rate limiter is per client in production and open in development", () => {
@@ -1124,13 +1597,23 @@ test("AI project input collapses whitespace and repeated adjacent words", () => 
 });
 
 test("detail UI keeps tables scrollable and modernization impacts labeled", () => {
-  const source = readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8");
+  const source = [
+    readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8"),
+    readFileSync("src/components/patents/patent-analysis.tsx", "utf8"),
+  ].join("\n");
   const css = readFileSync("src/app/globals.css", "utf8");
   assert.match(source, /materials-table/);
   assert.match(source, /difficultyImpact/);
   assert.match(source, /costImpact/);
   assert.match(css, /min-width: 680px/);
   assert.match(css, /difficulty-progress\.difficulty-medium/);
+});
+test("detail shell streams AI and legal metadata instead of awaiting them", () => {
+  const source = readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8");
+  assert.match(source, /<Suspense/);
+  assert.match(source, /PatentAnalysisLoading/);
+  assert.doesNotMatch(source, /await analyzePatent/);
+  assert.doesNotMatch(source, /await localizePatents/);
 });
 
 test("editorial patent presentation keeps drawing viewer and home steps accessible", () => {
@@ -1141,7 +1624,7 @@ test("editorial patent presentation keeps drawing viewer and home steps accessib
   const detail = readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8");
   const home = readFileSync("src/app/[locale]/page.tsx", "utf8");
   const discover = readFileSync(
-    "src/components/patents/discover-card.tsx",
+    "src/components/patents/patent-specimen.tsx",
     "utf8",
   );
   assert.match(viewer, /aria-current/);
@@ -1151,7 +1634,27 @@ test("editorial patent presentation keeps drawing viewer and home steps accessib
   assert.match(detail, /detail-hero/);
   assert.match(home, /howItWorks/);
   assert.match(home, /howDiscover/);
-  assert.match(discover, /source-badge/);
+  assert.match(discover, /specimen-source/);
+  assert.match(discover, /specimen-status/);
+});
+
+test("homepage featured patents reuse localization and card thumbnails", () => {
+  const home = readFileSync("src/app/[locale]/page.tsx", "utf8");
+  const card = readFileSync(
+    "src/components/patents/patent-specimen.tsx",
+    "utf8",
+  );
+  const viewer = readFileSync(
+    "src/components/patents/patent-drawing-viewer.tsx",
+    "utf8",
+  );
+  assert.match(home, /localizePatents\(rawFeatured, locale\)/);
+  assert.match(home, /<FeaturedPatentCards locale={locale} \/>/);
+  assert.match(home, /<Suspense/);
+  assert.match(card, /cardDrawingUrl\(drawing\.url\)/);
+  assert.match(card, /className="specimen-drawing"/);
+  assert.doesNotMatch(card, /m\.inspect|<Link/);
+  assert.doesNotMatch(viewer, /cardDrawingUrl|variant=card/);
 });
 
 test("drawing proxy and detail error UI keep upstream details private", () => {
@@ -1170,4 +1673,44 @@ test("drawing proxy and detail error UI keep upstream details private", () => {
   assert.match(errorUi, /m\.patentUnavailable/);
   assert.match(errorUi, /m\.retry/);
   assert.match(errorUi, /m\.back/);
+});
+
+test("patent cards format publication numbers and shouting titles", () => {
+  assert.equal(formatPublicationNumber("US7182230B2"), "US 7,182,230 B2");
+  assert.equal(formatPublicationNumber("US20260295860A1"), "US 2026/0295860 A1");
+  assert.equal(formatPublicationNumber("EP1234567A1"), "EP 1234567 A1");
+  assert.equal(formatPublicationNumber("WO-odd"), "WO-odd");
+  assert.equal(readableTitle("ROBOTIC FOOT SENSOR", "en"), "Robotic foot sensor");
+  assert.equal(readableTitle("IŞIK SENSÖRÜ", "tr"), "Işık sensörü");
+  assert.equal(readableTitle("Robot system", "en"), "Robot system");
+});
+
+test("Turkish project intents rank English patents through the English queries", () => {
+  const intent = {
+    summary: "Kediler için zamanlayıcılı mama makinesi",
+    keywords: ["kedi", "mama", "zamanlayıcı"],
+    concepts: ["otomatik besleme"],
+    suggestedCpc: [],
+    suggestedIpc: [],
+    searchQueries: ["automatic pet feeder", "timed food dispenser"],
+    technicalDomains: [],
+  };
+  const withTitle = (title: string, abstract: string) => ({
+    ...mockPatents[0],
+    title: { tr: "", en: title },
+    abstract: { tr: "", en: abstract },
+  });
+  const feeder = calculateRelevance(
+    intent,
+    withTitle(
+      "Self-cleaning automatic cat feeder",
+      "A feeder dispenses food on a timer.",
+    ),
+  );
+  const cabin = calculateRelevance(
+    intent,
+    withTitle("Working dog life support cabin", "A cabin keeps a dog warm."),
+  );
+  assert.ok(feeder.score > cabin.score);
+  assert.equal(feeder.contributions.keyword, 0.5); // (2/3 + 1/3) / 2
 });

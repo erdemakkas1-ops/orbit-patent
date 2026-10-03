@@ -38,6 +38,7 @@
   --meter-track: #ded3c5;
   --chip-bg: #eee0d0;
   --chip-border: #cfaa90;
+  --plate: #fffdf9;
   --radius: 0.6rem;
 }
 * {
@@ -237,6 +238,14 @@ p {
   gap: 12px;
   align-items: end;
 }
+.filter-bar-live {
+  grid-template-columns: minmax(230px, 2fr) repeat(3, minmax(115px, 1fr));
+}
+.search-live-note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
 .result-meta {
   border-bottom: 1px solid var(--line);
   padding-bottom: 16px;
@@ -339,12 +348,9 @@ p {
   background: var(--accent-soft);
   color: var(--primary-hover);
 }
-.discover-card {
-  min-height: 28rem;
-}
 .detail-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: 24px;
 }
 .filters {
@@ -602,15 +608,12 @@ a:focus-visible,
   line-height: 1.25;
 }
 .mobile-menu-button:hover,
+.mobile-nav-link[aria-current="page"],
 .mobile-nav-link:hover,
 .card-select:hover,
 .card-select[aria-pressed="true"] {
   border-color: var(--accent);
   background: var(--accent-soft);
-}
-.card-media {
-  border-color: var(--line);
-  background: var(--soft);
 }
 .intent-summary {
   border-color: var(--accent-soft);
@@ -642,6 +645,16 @@ a:focus-visible,
     box-shadow 180ms ease,
     filter 180ms ease;
 }
+.patent-card-link {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  border-radius: inherit;
+  color: inherit;
+  text-decoration: none;
+  outline: none;
+}
 .expanding-patent-card:hover,
 .expanding-patent-card:focus-within {
   z-index: 1;
@@ -655,31 +668,186 @@ a:focus-visible,
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.expanding-patent-card[data-selected="true"] {
-  z-index: 2;
-  transform: translateY(-2px) scale(1.01);
-  border-color: var(--primary);
-  background:
-    radial-gradient(
-      circle at 80% 14%,
-      rgb(var(--accent-rgb) / 0.2),
-      transparent 34%
-    ),
-    var(--surface-raised);
-  box-shadow:
-    0 18px 38px rgb(var(--primary-rgb) / 0.17),
-    0 0 0 5px rgb(var(--accent-rgb) / 0.09);
+.expanding-patent-card:hover h3,
+.expanding-patent-card:focus-within h3 {
+  color: var(--primary-hover);
 }
-.selectable-card-grid[data-has-selection="true"]
-  .expanding-patent-card:not([data-selected="true"]) {
-  filter: saturate(0.86);
+.patent-specimen {
+  border-color: rgb(var(--primary-rgb) / 0.14);
+  background: var(--plate);
+}
+.specimen-plate {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-bottom: 1px solid rgb(var(--primary-rgb) / 0.11);
+  border-radius: 11px 11px 0 0;
+  background: var(--plate);
+}
+.specimen-drawing {
+  object-fit: contain;
+  padding: 44px 22px 14px; /* top clears the category tag */
+  /* drawings are black ink on white: multiply melts the white into the plate */
+  mix-blend-mode: multiply;
+  transition: transform 260ms ease;
+}
+.expanding-patent-card:hover .specimen-drawing {
+  transform: scale(1.025);
+}
+.specimen-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.specimen-tag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-primary);
+  padding: 4px 10px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.specimen-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 18px 18px 16px;
+}
+.specimen-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.38;
+  letter-spacing: -0.01em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-wrap: pretty;
+}
+.specimen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.specimen-meta > * + *::before {
+  content: "·";
+  margin: 0 7px;
+  color: var(--line);
+  font-weight: 700;
+}
+.specimen-number {
+  color: var(--foreground);
+  font-family:
+    ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.specimen-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.specimen-ai svg {
+  color: var(--accent);
+}
+.specimen-abstract {
+  display: -webkit-box;
+  margin: 10px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.specimen-foot {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+.specimen-status {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+.specimen-status svg {
+  flex: none;
+}
+.specimen-status strong {
+  font-weight: 700;
+}
+.specimen-score {
+  width: 100%;
+}
+.specimen-source {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.pager a {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  padding: 0 1.1rem;
+  color: var(--primary);
+  font-weight: 600;
+}
+.pager a:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+.pager span {
+  color: var(--muted);
+}
+/* Inline text links stay comfortably tappable on touch screens. */
+@media (pointer: coarse) {
+  .card-action {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+  }
 }
 @media (max-width: 800px) {
   .grid-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .detail-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -755,7 +923,7 @@ a:focus-visible,
   .expanding-patent-card,
   .expanding-patent-card:hover,
   .expanding-patent-card:focus-within,
-  .expanding-patent-card[data-selected="true"] {
+  .expanding-patent-card:hover .specimen-drawing {
     transform: none !important;
   }
 }

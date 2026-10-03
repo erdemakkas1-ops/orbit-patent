@@ -21,6 +21,8 @@ export const messages = {
     discoverByStatus: "Duruma Göre Keşfet",
     liveStatusUnavailable:
       "Hukuki durum filtresi canlı EPO keşfinde kullanılamıyor.",
+    liveSortUnavailable:
+      "Canlı EPO sonuçları sağlayıcının güvenilir sonuç sırasıyla gösterilir.",
     unclassified: "Sınıflandırılmamış",
     discoverByYear: "Yıllara Göre Keşfet",
     featured: "Öne Çıkan",
@@ -67,6 +69,14 @@ export const messages = {
     howDevelopText:
       "AI destekli maliyet, malzeme ve modernizasyon analiziyle fikri ileri taşıyın.",
     mock: "Patent verisi örnektir.",
+    cardSample: "Örnek",
+    cardFiled: "başvuru",
+    cardPublished: "yayın",
+    cardAi: "AI",
+    cardAiTitle: "Başlık ve özet yapay zekâ ile çevrildi",
+    cardSourceMock: "Demo kaydı",
+    cardSourceEpo: "EPO OPS kaydı",
+    cardStatusUnknown: "Hukuki durum doğrulanmadı",
     live: "Patent verisi canlıdır.",
     patentDemo:
       "Bu patent kaydı yalnızca demo/test amaçlıdır ve gerçek bir patent değildir.",
@@ -251,6 +261,8 @@ export const messages = {
     discoverByStatus: "Discover by Status",
     liveStatusUnavailable:
       "Legal status filtering is unavailable for live EPO discovery.",
+    liveSortUnavailable:
+      "Live EPO results use the provider's reliable result order.",
     unclassified: "Unclassified",
     discoverByYear: "Discover by Year",
     featured: "Featured",
@@ -275,6 +287,14 @@ export const messages = {
       assistive: "Assistive Technologies",
     },
     mock: "Patent data is a sample.",
+    cardSample: "Sample",
+    cardFiled: "filed",
+    cardPublished: "published",
+    cardAi: "AI",
+    cardAiTitle: "Title and abstract translated by AI",
+    cardSourceMock: "Demo record",
+    cardSourceEpo: "EPO OPS record",
+    cardStatusUnknown: "Legal status not verified",
     live: "Patent data is live.",
     patentDemo: "This patent record is for demo/testing only and is not real.",
     aiMock: "AI analysis is a sample.",

@@ -23,7 +23,6 @@ export function ProjectSearch({ locale }: { locale: Locale }) {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [length, setLength] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
-  const [selectedPatentId, setSelectedPatentId] = useState<string | null>(null);
   const relatedCategory = result?.results[0]
     ? categorizePatent(result.results[0].patent)
     : null;
@@ -44,7 +43,6 @@ export function ProjectSearch({ locale }: { locale: Locale }) {
     setError(false);
     setRateLimited(false);
     setResult(null);
-    setSelectedPatentId(null);
     try {
       const response = await fetch("/api/ai", {
         method: "POST",
@@ -160,18 +158,13 @@ export function ProjectSearch({ locale }: { locale: Locale }) {
               </Link>
             )}
             {result.results.length ? (
-              <div
-                className="grid-cards selectable-card-grid"
-                data-has-selection={Boolean(selectedPatentId)}
-              >
+              <div className="grid-cards">
                 {result.results.map((r) => (
                   <PatentCard
                     key={r.patent.id}
                     patent={r.patent}
                     score={r.score}
                     locale={locale}
-                    selected={selectedPatentId === r.patent.id}
-                    onSelect={() => setSelectedPatentId(r.patent.id)}
                   />
                 ))}
               </div>

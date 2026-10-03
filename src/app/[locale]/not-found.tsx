@@ -8,8 +8,16 @@ export default function NotFound() {
   const m = messages[l];
   return (
     <div className="panel">
-      <h1>{m.notFound}</h1>
-      <Link href={`/${l}/patents`}>{m.back}</Link>
+      <p className="eyebrow">ORBIT / 404</p>
+      <h1 className="my-5">{m.pageNotFound}</h1>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <Link className="card-action font-semibold" href={`/${l}`}>
+          {m.home}
+        </Link>
+        <Link className="card-action font-semibold" href={`/${l}/patents`}>
+          {m.back}
+        </Link>
+      </div>
     </div>
   );
 }

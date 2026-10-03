@@ -7,6 +7,8 @@ import { SearchForm } from "@/components/search/search-form";
 import { PatentCard } from "@/components/patents/patent-card";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
+import { hydratePatentReferences } from "@/lib/patents/providers/epo";
+import { localizePatents } from "@/lib/ai/translation";
 
 export async function generateMetadata({
   params,
@@ -35,13 +37,33 @@ export default async function SearchPage({
   const raw = await searchParams;
   const parsed = searchSchema.safeParse(raw);
   const q = parsed.success ? parsed.data : searchSchema.parse({});
-  const result = parsed.success
-    ? await patentProvider.searchPatents(q).catch(() => null)
+  const liveSearch = patentProvider.source === "epo";
+  const effectiveQuery = liveSearch
+    ? { ...q, status: undefined, sort: "relevance" as const, pageSize: 6 }
+    : q;
+  const rawResult = parsed.success
+    ? await patentProvider.searchPatents(effectiveQuery).catch(() => null)
     : null;
+  const result =
+    rawResult && liveSearch
+      ? {
+          ...rawResult,
+          patents: await localizePatents(
+            await hydratePatentReferences(
+              rawResult.patents,
+              (id) => patentProvider.getPatentById(id),
+              rawResult.pageSize,
+              3,
+            ),
+            locale,
+          ),
+        }
+      : rawResult;
   function pageUrl(page: number) {
     const s = new URLSearchParams();
     Object.entries(q).forEach(([k, v]) => {
-      if (v !== undefined) s.set(k, String(v));
+      if (v !== undefined && !(liveSearch && (k === "status" || k === "sort")))
+        s.set(k, String(v));
     });
     s.set("page", String(page));
     return `/${locale}/patents?${s}`;
@@ -50,7 +72,12 @@ export default async function SearchPage({
     <>
       <p className="eyebrow">ORBIT / {m.patentExplore}</p>
       <h1 className="my-5">{m.patentExplore}</h1>
-      <SearchForm key={JSON.stringify(q)} locale={locale} query={q} />
+      <SearchForm
+        key={JSON.stringify(q)}
+        locale={locale}
+        query={q}
+        live={liveSearch}
+      />
       {!parsed.success ? (
         <p role="alert" className="notice">
           {m.invalid}
@@ -79,7 +106,10 @@ export default async function SearchPage({
               <p className="muted">{m.emptyHint}</p>
             </div>
           )}
-          <nav className="my-8 flex items-center justify-center gap-6 text-sm">
+          <nav
+            aria-label={m.page}
+            className="pager my-8 flex items-center justify-center gap-4 text-sm"
+          >
             {q.page > 1 && <Link href={pageUrl(q.page - 1)}>{m.previous}</Link>}
             <span>
               {m.page} {q.page}

@@ -6,18 +6,26 @@ import { patentId } from "@/lib/api";
 export const runtime = "nodejs";
 
 const drawingPage = z.coerce.number().int().min(1).max(5);
+const drawingVariant = z.enum(["full", "card"]).default("full");
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; page: string }> },
 ) {
   try {
     const values = await params;
     const id = patentId.parse(values.id);
     const page = drawingPage.parse(values.page);
+    const variant = drawingVariant.parse(
+      new URL(request.url).searchParams.get("variant") ?? undefined,
+    );
     if (!patentProvider.getPatentDrawingPage)
       return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-    const drawing = await patentProvider.getPatentDrawingPage(id, page);
+    const drawing = await patentProvider.getPatentDrawingPage(
+      id,
+      page,
+      variant,
+    );
     if (drawing.contentType !== "image/png")
       throw new Error("EPO_DRAWING_INVALID_CONTENT");
     return new NextResponse(Buffer.from(drawing.body), {

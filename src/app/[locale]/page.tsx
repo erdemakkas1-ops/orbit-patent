@@ -1,10 +1,35 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Locale } from "@/types/patent";
 import { messages, isLocale } from "@/lib/i18n/messages";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { patentProvider } from "@/lib/patents";
 import { DiscoverCard } from "@/components/patents/discover-card";
 import { discoveryCategories } from "@/lib/patents/discovery";
+import { localizePatents } from "@/lib/ai/translation";
+
+async function FeaturedPatentCards({ locale }: { locale: Locale }) {
+  const rawFeatured = patentProvider.getFeaturedPatents
+    ? await patentProvider.getFeaturedPatents(3).catch(() => [])
+    : [];
+  const featured = await localizePatents(rawFeatured, locale);
+  if (!featured.length) return null;
+  return (
+    <div className="grid-cards">
+      {featured.map((patent) => (
+        <DiscoverCard
+          key={patent.id}
+          patent={patent}
+          locale={locale}
+          featured
+        />
+      ))}
+    </div>
+  );
+}
+
 export default async function Home({
   params,
 }: {
@@ -13,9 +38,6 @@ export default async function Home({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const m = messages[locale];
-  const featured = patentProvider.getFeaturedPatents
-    ? await patentProvider.getFeaturedPatents(3).catch(() => [])
-    : [];
   return (
     <section className="py-8 md:py-14">
       <div className="hero-grid">
@@ -95,13 +117,17 @@ export default async function Home({
             {m.exploreAll}
           </Link>
         </div>
-        {featured.length > 0 && (
-          <div className="grid-cards">
-            {featured.map((patent) => (
-              <DiscoverCard key={patent.id} patent={patent} locale={locale} />
-            ))}
-          </div>
-        )}
+        <Suspense
+          fallback={
+            <div className="grid-cards" aria-hidden="true">
+              <Skeleton className="aspect-[9/10] w-full" />
+              <Skeleton className="aspect-[9/10] w-full" />
+              <Skeleton className="aspect-[9/10] w-full" />
+            </div>
+          }
+        >
+          <FeaturedPatentCards locale={locale} />
+        </Suspense>
         <div className="mt-6 flex flex-wrap gap-2">
           {discoveryCategories.slice(0, 5).map((category) => (
             <Link

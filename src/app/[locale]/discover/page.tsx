@@ -12,6 +12,7 @@ import { DiscoverCard } from "@/components/patents/discover-card";
 import { Button } from "@/components/ui/button";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
+import { localizePatents } from "@/lib/ai/translation";
 
 export async function generateMetadata({
   params,
@@ -46,14 +47,20 @@ export default async function DiscoverPage({
     category: query.category,
     legalStatus,
     yearRange: query.year ? yearRanges[query.year] : undefined,
-    sort: query.sort,
+    sort: liveDiscovery ? "featured" : query.sort,
     page: query.page,
     pageSize: liveDiscovery ? 6 : 20,
   };
-  const result =
+  const rawResult =
     parsed.success && patentProvider.discoverPatents
       ? await patentProvider.discoverPatents(filters).catch(() => null)
       : null;
+  const result = rawResult
+    ? {
+        ...rawResult,
+        patents: await localizePatents(rawResult.patents, locale),
+      }
+    : null;
   const hasFilters = Boolean(
     query.category || legalStatus || query.year || query.sort !== "featured",
   );
@@ -63,6 +70,7 @@ export default async function DiscoverPage({
       ...changes,
     };
     if (liveDiscovery) values.status = undefined;
+    if (liveDiscovery) values.sort = undefined;
     const params = new URLSearchParams();
     Object.entries(values).forEach(([key, value]) => {
       if (
@@ -156,26 +164,32 @@ export default async function DiscoverPage({
         <h2 className="!mb-0">
           {hasFilters ? m.discoveryResults : m.featuredPatents}
         </h2>
-        <form action={`/${locale}/discover`} className="flex items-end gap-3">
-          {query.category && (
-            <input type="hidden" name="category" value={query.category} />
-          )}
-          {legalStatus && (
-            <input type="hidden" name="status" value={legalStatus} />
-          )}
-          {query.year && <input type="hidden" name="year" value={query.year} />}
-          <label className="min-w-40">
-            {m.sort}
-            <select name="sort" defaultValue={query.sort}>
-              <option value="featured">{m.featured}</option>
-              <option value="newest">{m.newest}</option>
-              <option value="oldest">{m.oldest}</option>
-            </select>
-          </label>
-          <Button type="submit" size="sm">
-            {m.sort}
-          </Button>
-        </form>
+        {liveDiscovery ? (
+          <p className="notice text-sm">{m.liveSortUnavailable}</p>
+        ) : (
+          <form action={`/${locale}/discover`} className="flex items-end gap-3">
+            {query.category && (
+              <input type="hidden" name="category" value={query.category} />
+            )}
+            {legalStatus && (
+              <input type="hidden" name="status" value={legalStatus} />
+            )}
+            {query.year && (
+              <input type="hidden" name="year" value={query.year} />
+            )}
+            <label className="min-w-40">
+              {m.sort}
+              <select name="sort" defaultValue={query.sort}>
+                <option value="featured">{m.featured}</option>
+                <option value="newest">{m.newest}</option>
+                <option value="oldest">{m.oldest}</option>
+              </select>
+            </label>
+            <Button type="submit" size="sm">
+              {m.sort}
+            </Button>
+          </form>
+        )}
       </div>
 
       {!parsed.success ? (
@@ -195,7 +209,7 @@ export default async function DiscoverPage({
           </div>
           <nav
             aria-label={m.page}
-            className="my-8 flex items-center justify-center gap-6 text-sm"
+            className="pager my-8 flex items-center justify-center gap-4 text-sm"
           >
             {query.page > 1 && (
               <Link href={url({ page: query.page - 1 })}>{m.previous}</Link>

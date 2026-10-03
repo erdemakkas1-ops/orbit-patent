@@ -5,6 +5,7 @@ import type {
   Simplification,
 } from "@/types/ai";
 import type { Locale, Localized, Patent } from "@/types/patent";
+import { readableTitle } from "@/lib/patents/format";
 
 export const finiteClamp = (
   value: number,
@@ -141,14 +142,48 @@ export function normalizeModernization(
     .slice(0, 8);
 }
 
+/** Patent text as published: drop the "[0000]" paragraph marker, collapse spacing. */
+const cleanPatentText = (value: string | undefined) =>
+  value
+    ?.replace(/^\s*\[\d{4}\]/, "")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 export function patentDisplay(
   patent: Patent,
   locale: Locale,
   fallback: string,
 ) {
+  const translated = patent.translations?.[locale];
+  const aiTranslated = !patent.title[locale] && Boolean(translated?.title);
+  // Case-fold in the title's own language: Turkish rules turn "I" into "ı".
+  const titleLanguage = patent.title[locale] || aiTranslated ? locale : "en";
   return {
-    title: localizedText(patent.title, locale, fallback, 240),
-    abstract: localizedText(patent.abstract, locale, fallback, 1200),
-    description: localizedText(patent.description, locale, fallback, 4000),
+    aiTranslated,
+    title: readableTitle(
+      safeText(
+        patent.title[locale] || translated?.title || patent.title.en,
+        fallback,
+        240,
+      ),
+      titleLanguage,
+    ),
+    abstract: safeText(
+      cleanPatentText(
+        patent.abstract[locale] || translated?.abstract || patent.abstract.en,
+      ),
+      fallback,
+      1200,
+    ),
+    description: safeText(
+      cleanPatentText(
+        patent.description[locale] ||
+          translated?.description ||
+          patent.description.en,
+      ),
+      fallback,
+      4000,
+    ),
   };
 }

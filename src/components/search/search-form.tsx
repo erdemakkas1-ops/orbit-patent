@@ -3,17 +3,20 @@ import { LegalStatus } from "@/types/patent";
 import { messages } from "@/lib/i18n/messages";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { GetForm } from "./get-form";
 export function SearchForm({
   locale,
   query: q,
+  live = false,
 }: {
   locale: Locale;
   query: PatentSearch;
+  live?: boolean;
 }) {
   const m = messages[locale];
   return (
-    <form action={`/${locale}/patents`} className="search-hero mb-8">
-      <div className="filter-bar">
+    <GetForm action={`/${locale}/patents`} className="search-hero mb-8">
+      <div className={live ? "filter-bar filter-bar-live" : "filter-bar"}>
         <label>
           {m.query}
           <input
@@ -23,17 +26,19 @@ export function SearchForm({
             maxLength={160}
           />
         </label>
-        <label>
-          {m.status}
-          <select name="status" defaultValue={q.status ?? ""}>
-            <option value="">{m.all}</option>
-            {Object.values(LegalStatus).map((s) => (
-              <option key={s} value={s}>
-                {m.statuses[s]}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!live && (
+          <label>
+            {m.status}
+            <select name="status" defaultValue={q.status ?? ""}>
+              <option value="">{m.all}</option>
+              {Object.values(LegalStatus).map((s) => (
+                <option key={s} value={s}>
+                  {m.statuses[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           {m.cpc}
           <input name="cpc" defaultValue={q.cpc} maxLength={160} />
@@ -54,14 +59,16 @@ export function SearchForm({
         </label>
       </div>
       <div className="mt-4 flex flex-wrap items-end gap-4">
-        <label className="min-w-36">
-          {m.sort}
-          <select name="sort" defaultValue={q.sort}>
-            <option value="relevance">{m.relevance}</option>
-            <option value="newest">{m.newest}</option>
-            <option value="oldest">{m.oldest}</option>
-          </select>
-        </label>
+        {!live && (
+          <label className="min-w-36">
+            {m.sort}
+            <select name="sort" defaultValue={q.sort}>
+              <option value="relevance">{m.relevance}</option>
+              <option value="newest">{m.newest}</option>
+              <option value="oldest">{m.oldest}</option>
+            </select>
+          </label>
+        )}
         <Button type="submit">{m.search}</Button>
         <Link
           className="py-2 text-sm muted underline"
@@ -70,6 +77,11 @@ export function SearchForm({
           {m.clear}
         </Link>
       </div>
-    </form>
+      {live && (
+        <p className="search-live-note">
+          {m.liveStatusUnavailable} {m.liveSortUnavailable}
+        </p>
+      )}
+    </GetForm>
   );
 }
