@@ -7,7 +7,7 @@ import type { Locale, Patent } from "@/types/patent";
 export async function searchProject(text: string, locale: Locale) {
   const intent = await analyzeProjectIntent(text, locale);
   const queries = intent.searchQueries.slice(0, 3);
-  const batches = await Promise.all([
+  const settledBatches = await Promise.allSettled([
     ...queries.map((q) =>
       patentProvider.searchPatents({ q, sort: "relevance", page: 1 }),
     ),
@@ -17,6 +17,9 @@ export async function searchProject(text: string, locale: Locale) {
         patentProvider.searchPatents({ cpc, sort: "relevance", page: 1 }),
       ),
   ]);
+  const batches = settledBatches.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
   const unique = new Map<string, Patent>();
   batches.forEach((b) => b.patents.forEach((p) => unique.set(p.id, p)));
   const results = [...unique.values()]

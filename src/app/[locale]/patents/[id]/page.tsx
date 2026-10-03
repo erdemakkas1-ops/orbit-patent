@@ -8,6 +8,10 @@ import { buildMetadata } from "@/lib/seo";
 import { patentDisplay, safeText } from "@/lib/ai/safety";
 import { PatentDrawingViewer } from "@/components/patents/patent-drawing-viewer";
 import {
+  LocalizedPatentHeroCopy,
+  PatentHeroCopy,
+} from "@/components/patents/patent-hero-copy";
+import {
   PatentAnalysis,
   PatentAnalysisLoading,
 } from "@/components/patents/patent-analysis";
@@ -61,45 +65,9 @@ export default async function Detail({ params }: DetailProps) {
       </Link>
       <section className="detail-hero mt-8">
         <PatentDrawingViewer patent={patent} locale={locale} />
-        <div className="detail-hero-copy">
-          <p className="eyebrow break-all">
-            {safeText(patent.publicationNumber, m.noData, 120)}
-          </p>
-          <h1 className="my-4 max-w-4xl break-words">{display.title}</h1>
-          <div className="mb-4 flex flex-wrap gap-2">
-            {patent.source === "mock" && (
-              <span
-                className={`badge status-${patent.legalStatus.toLowerCase()}`}
-              >
-                {m.statuses[patent.legalStatus]}
-              </span>
-            )}
-            {patent.publicationDate && (
-              <span className="badge">
-                {patent.publicationDate.slice(0, 4)}
-              </span>
-            )}
-          </div>
-          {patent.source === "mock" && (
-            <p className="notice mb-4" role="status">
-              {m.patentDemo}
-            </p>
-          )}
-          <p className="detail-summary">{display.abstract}</p>
-          <dl className="detail-hero-meta">
-            {[
-              [m.applicants, patent.applicants.join(", ")],
-              [m.inventors, patent.inventors.join(", ")],
-              [m.cpc, patent.cpc.join(", ")],
-              [m.ipc, patent.ipc.join(", ")],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value || m.noData}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+        <Suspense fallback={<PatentHeroCopy patent={patent} locale={locale} />}>
+          <LocalizedPatentHeroCopy patent={patent} locale={locale} />
+        </Suspense>
       </section>
       <Suspense fallback={<PatentAnalysisLoading locale={locale} />}>
         <PatentAnalysis patent={patent} locale={locale} />
