@@ -47,7 +47,7 @@ export default async function DiscoverPage({
     category: query.category,
     legalStatus,
     yearRange: query.year ? yearRanges[query.year] : undefined,
-    sort: query.sort,
+    sort: liveDiscovery ? "featured" : query.sort,
     page: query.page,
     pageSize: liveDiscovery ? 6 : 20,
   };
@@ -70,6 +70,7 @@ export default async function DiscoverPage({
       ...changes,
     };
     if (liveDiscovery) values.status = undefined;
+    if (liveDiscovery) values.sort = undefined;
     const params = new URLSearchParams();
     Object.entries(values).forEach(([key, value]) => {
       if (
@@ -163,26 +164,32 @@ export default async function DiscoverPage({
         <h2 className="!mb-0">
           {hasFilters ? m.discoveryResults : m.featuredPatents}
         </h2>
-        <form action={`/${locale}/discover`} className="flex items-end gap-3">
-          {query.category && (
-            <input type="hidden" name="category" value={query.category} />
-          )}
-          {legalStatus && (
-            <input type="hidden" name="status" value={legalStatus} />
-          )}
-          {query.year && <input type="hidden" name="year" value={query.year} />}
-          <label className="min-w-40">
-            {m.sort}
-            <select name="sort" defaultValue={query.sort}>
-              <option value="featured">{m.featured}</option>
-              <option value="newest">{m.newest}</option>
-              <option value="oldest">{m.oldest}</option>
-            </select>
-          </label>
-          <Button type="submit" size="sm">
-            {m.sort}
-          </Button>
-        </form>
+        {liveDiscovery ? (
+          <p className="notice text-sm">{m.liveSortUnavailable}</p>
+        ) : (
+          <form action={`/${locale}/discover`} className="flex items-end gap-3">
+            {query.category && (
+              <input type="hidden" name="category" value={query.category} />
+            )}
+            {legalStatus && (
+              <input type="hidden" name="status" value={legalStatus} />
+            )}
+            {query.year && (
+              <input type="hidden" name="year" value={query.year} />
+            )}
+            <label className="min-w-40">
+              {m.sort}
+              <select name="sort" defaultValue={query.sort}>
+                <option value="featured">{m.featured}</option>
+                <option value="newest">{m.newest}</option>
+                <option value="oldest">{m.oldest}</option>
+              </select>
+            </label>
+            <Button type="submit" size="sm">
+              {m.sort}
+            </Button>
+          </form>
+        )}
       </div>
 
       {!parsed.success ? (

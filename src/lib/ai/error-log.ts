@@ -1,5 +1,52 @@
 type ErrorRecord = Record<string, unknown>;
 
+export const isAiCreditExhausted = (error: unknown) => {
+  const value =
+    error && typeof error === "object" ? (error as ErrorRecord) : {};
+  return value.code === "credit_balance_exhausted";
+};
+
+export class AiCreditCircuit {
+  private blockedUntil = 0;
+  private verified = false;
+  private probe?: Promise<void>;
+  constructor(private readonly cooldownMs = 5 * 60_000) {}
+  assertAvailable(now = Date.now()) {
+    if (this.blockedUntil > now) throw new Error("AI_CREDIT_EXHAUSTED");
+  }
+  observe(error: unknown, now = Date.now()) {
+    if (isAiCreditExhausted(error)) {
+      this.verified = false;
+      this.blockedUntil = now + this.cooldownMs;
+    }
+  }
+  async enter() {
+    this.assertAvailable();
+    if (this.verified) return () => {};
+    if (this.probe) {
+      await this.probe;
+      this.assertAvailable();
+      return () => {};
+    }
+    let release!: () => void;
+    this.probe = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      release();
+      this.probe = undefined;
+    };
+  }
+  observeSuccess() {
+    this.verified = true;
+    this.blockedUntil = 0;
+  }
+  clear() {
+    this.verified = false;
+    this.blockedUntil = 0;
+  }
+}
+
 const redact = (value: string) =>
   value
     .replace(/sk-[A-Za-z0-9_-]{8,}/g, "[REDACTED_API_KEY]")

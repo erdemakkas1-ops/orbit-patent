@@ -19,6 +19,7 @@ import {
 } from "./epo/identifier";
 import { EpoImageService } from "./epo/images";
 import { discoverySearchTerms, featuredScore } from "@/lib/patents/discovery";
+import { parseEpoFamilyLegal } from "./epo/family";
 
 export type EpoResponseMetadata = {
   path: string;
@@ -39,6 +40,18 @@ function logEpoError(metadata: EpoResponseMetadata) {
       ...(metadata.safeErrorSummary
         ? { safeErrorSummary: metadata.safeErrorSummary }
         : {}),
+    }),
+  );
+}
+
+function logEpoMiss(metadata: EpoResponseMetadata) {
+  console.info(
+    "[EPO OPS MISS]",
+    JSON.stringify({
+      path: metadata.path,
+      status: metadata.status,
+      durationMs: metadata.durationMs,
+      contentType: metadata.contentType,
     }),
   );
 }
@@ -75,7 +88,7 @@ export class EpoOpsClient {
     params?: Record<string, string>,
     range?: string,
   ) {
-    if (!/^(published-data|family)\/[a-z0-9./_-]+$/i.test(path))
+    if (!/^(published-data|family)\/[a-z0-9.,/_-]+$/i.test(path))
       throw new Error("EPO_INVALID_PATH");
     const url = new URL(`${EPO_CONFIG.baseUrl}/${path}`);
     Object.entries(params ?? {}).forEach(([key, value]) =>
@@ -141,14 +154,17 @@ export class EpoOpsClient {
       durationMs,
       safeErrorSummary,
     });
-    if (!response.ok)
-      logEpoError({
+    if (!response.ok) {
+      const metadata = {
         path,
         status: response.status,
         contentType,
         durationMs,
         safeErrorSummary,
-      });
+      };
+      if (response.status === 404) logEpoMiss(metadata);
+      else logEpoError(metadata);
+    }
     if (!response.ok)
       throw new EpoOpsHttpError(
         response.status,
@@ -265,6 +281,10 @@ export class EpoOpsPatentProvider implements PatentProvider {
   private readonly searchCache = new Map<string, CacheEntry<SearchResult>>();
   private readonly discoveryCache = new Map<string, CacheEntry<SearchResult>>();
   private readonly detailCache = new Map<string, CacheEntry<Patent | null>>();
+  private readonly familyCache = new Map<
+    string,
+    CacheEntry<Promise<{ family: Patent["family"]; legalEvents: LegalEvent[] }>>
+  >();
   private featuredCache?: CacheEntry<Patent[]>;
   private readonly images: EpoImageService;
   constructor(readonly client: EpoOpsClient) {
@@ -432,10 +452,28 @@ export class EpoOpsPatentProvider implements PatentProvider {
   getPatentDrawingPage(id: string, page: number) {
     return this.images.getDrawingPage(id, page);
   }
+  private getFamilyMetadata(id: string) {
+    const identifier = parsePatentIdentifier(id);
+    if (!identifier) return Promise.reject(new Error("EPO_INVALID_IDENTIFIER"));
+    const key = toRouteIdentifier(identifier);
+    const cached = this.familyCache.get(key);
+    if (cached && cached.expires > Date.now()) return cached.value;
+    const docdb = toDocdbIdentifier(identifier);
+    if (!docdb) return Promise.resolve({ family: [], legalEvents: [] });
+    const value = this.client
+      .request(`family/publication/docdb/${docdb}/biblio,legal`)
+      .then(parseEpoFamilyLegal)
+      .catch(() => ({ family: [], legalEvents: [] }));
+    this.familyCache.set(key, {
+      value,
+      expires: Date.now() + EPO_CONFIG.detailCacheMs,
+    });
+    return value;
+  }
   async getPatentFamily(id: string) {
-    return (await this.getPatentById(id))?.family ?? [];
+    return (await this.getFamilyMetadata(id)).family;
   }
   async getLegalEvents(id: string): Promise<LegalEvent[]> {
-    return (await this.getPatentById(id))?.legalEvents ?? [];
+    return (await this.getFamilyMetadata(id)).legalEvents;
   }
 }

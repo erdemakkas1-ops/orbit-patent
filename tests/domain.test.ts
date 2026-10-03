@@ -71,7 +71,11 @@ import {
   localizePatentsWithProvider,
   patentTranslationCacheKey,
 } from "../src/lib/ai/translation-core";
-import { safeAiErrorDetails } from "../src/lib/ai/error-log";
+import { AiCreditCircuit, safeAiErrorDetails } from "../src/lib/ai/error-log";
+import {
+  mapEpoLegalEvent,
+  parseEpoFamilyLegal,
+} from "../src/lib/patents/providers/epo/family";
 const event = (
   kind: LegalEvent["kind"],
   date: string,
@@ -821,6 +825,36 @@ test("safe AI logs redact credentials and keep diagnostic fields", () => {
   assert.equal(details.requestId, "req_123");
   assert.doesNotMatch(JSON.stringify(details), /supersecret/);
 });
+test("AI credit circuit fails fast for a bounded cooldown and can recover", () => {
+  const circuit = new AiCreditCircuit(1000);
+  circuit.observe({ code: "credit_balance_exhausted" }, 100);
+  assert.throws(() => circuit.assertAvailable(500), /AI_CREDIT_EXHAUSTED/);
+  assert.doesNotThrow(() => circuit.assertAvailable(1101));
+});
+test("AI credit circuit coalesces the first request while credit is unknown", async () => {
+  const circuit = new AiCreditCircuit(1000);
+  const releaseProbe = await circuit.enter();
+  let waiting = true;
+  const second = circuit.enter().finally(() => {
+    waiting = false;
+  });
+  await Promise.resolve();
+  assert.equal(waiting, true);
+  circuit.observe({ code: "credit_balance_exhausted" });
+  releaseProbe();
+  await assert.rejects(second, /AI_CREDIT_EXHAUSTED/);
+});
+test("EPO family/legal parser deduplicates members and maps only conservative events", () => {
+  const parsed = parseEpoFamilyLegal(
+    `<ops:world-patent-data xmlns:ops="x"><ops:patent-family><ops:family-member><publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>1000000</doc-number><kind>A1</kind></document-id></publication-reference><ops:legal code="FG" desc="GRANT OF PATENT"><ops:L001EP desc="Country Code">EP</ops:L001EP><ops:L007EP desc="Gazette DATE">2003-08-15</ops:L007EP></ops:legal></ops:family-member><ops:family-member><publication-reference><document-id document-id-type="docdb"><country>EP</country><doc-number>1000000</doc-number><kind>A1</kind></document-id></publication-reference><ops:legal code="AX" desc="DESIGNATED CONTRACTING STATES"><ops:L001EP desc="Country Code">EP</ops:L001EP><ops:L007EP desc="Gazette DATE">2004-01-02</ops:L007EP></ops:legal></ops:family-member></ops:patent-family></ops:world-patent-data>`,
+  );
+  assert.deepEqual(parsed.family, [
+    { publicationNumber: "EP1000000A1", country: "EP" },
+  ]);
+  assert.equal(parsed.legalEvents[0].kind, "GRANTED");
+  assert.equal(parsed.legalEvents[1].kind, "UNMAPPED");
+  assert.equal(mapEpoLegalEvent("RER", "CEASED AS TO NATIONAL LAW"), "LAPSED");
+});
 test("cost values are finite, non-negative and ordered", () => {
   const result = calculateCost(
     [
@@ -1281,13 +1315,23 @@ test("AI project input collapses whitespace and repeated adjacent words", () => 
 });
 
 test("detail UI keeps tables scrollable and modernization impacts labeled", () => {
-  const source = readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8");
+  const source = [
+    readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8"),
+    readFileSync("src/components/patents/patent-analysis.tsx", "utf8"),
+  ].join("\n");
   const css = readFileSync("src/app/globals.css", "utf8");
   assert.match(source, /materials-table/);
   assert.match(source, /difficultyImpact/);
   assert.match(source, /costImpact/);
   assert.match(css, /min-width: 680px/);
   assert.match(css, /difficulty-progress\.difficulty-medium/);
+});
+test("detail shell streams AI and legal metadata instead of awaiting them", () => {
+  const source = readFileSync("src/app/[locale]/patents/[id]/page.tsx", "utf8");
+  assert.match(source, /<Suspense/);
+  assert.match(source, /PatentAnalysisLoading/);
+  assert.doesNotMatch(source, /await analyzePatent/);
+  assert.doesNotMatch(source, /await localizePatents/);
 });
 
 test("editorial patent presentation keeps drawing viewer and home steps accessible", () => {

@@ -30,10 +30,12 @@ export function PatentCard({
       <div className="card-media flex h-36 items-center justify-center border-b">
         {p.drawings[0] ? (
           <Image
+            className="h-full w-full object-contain p-3"
             src={p.drawings[0].url}
-            alt={p.drawings[0].caption[locale]}
+            alt={safeText(p.drawings[0].caption[locale], m.noDrawing, 200)}
             width={290}
             height={136}
+            loading="lazy"
           />
         ) : (
           <span className="muted">{m.noDrawing}</span>
@@ -41,9 +43,11 @@ export function PatentCard({
       </div>
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <span className={`badge status-${p.legalStatus.toLowerCase()}`}>
-            {m.statuses[p.legalStatus]}
-          </span>
+          {(p.source === "mock" || p.legalStatus !== "UNKNOWN") && (
+            <span className={`badge status-${p.legalStatus.toLowerCase()}`}>
+              {m.statuses[p.legalStatus]}
+            </span>
+          )}
           <span className="badge source-badge">
             {p.source === "mock" ? m.mock : m.live}
           </span>

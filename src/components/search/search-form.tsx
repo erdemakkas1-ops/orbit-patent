@@ -6,9 +6,11 @@ import Link from "next/link";
 export function SearchForm({
   locale,
   query: q,
+  live = false,
 }: {
   locale: Locale;
   query: PatentSearch;
+  live?: boolean;
 }) {
   const m = messages[locale];
   return (
@@ -23,17 +25,21 @@ export function SearchForm({
             maxLength={160}
           />
         </label>
-        <label>
-          {m.status}
-          <select name="status" defaultValue={q.status ?? ""}>
-            <option value="">{m.all}</option>
-            {Object.values(LegalStatus).map((s) => (
-              <option key={s} value={s}>
-                {m.statuses[s]}
-              </option>
-            ))}
-          </select>
-        </label>
+        {live ? (
+          <p className="notice text-sm">{m.liveStatusUnavailable}</p>
+        ) : (
+          <label>
+            {m.status}
+            <select name="status" defaultValue={q.status ?? ""}>
+              <option value="">{m.all}</option>
+              {Object.values(LegalStatus).map((s) => (
+                <option key={s} value={s}>
+                  {m.statuses[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           {m.cpc}
           <input name="cpc" defaultValue={q.cpc} maxLength={160} />
@@ -54,14 +60,18 @@ export function SearchForm({
         </label>
       </div>
       <div className="mt-4 flex flex-wrap items-end gap-4">
-        <label className="min-w-36">
-          {m.sort}
-          <select name="sort" defaultValue={q.sort}>
-            <option value="relevance">{m.relevance}</option>
-            <option value="newest">{m.newest}</option>
-            <option value="oldest">{m.oldest}</option>
-          </select>
-        </label>
+        {live ? (
+          <p className="notice text-sm">{m.liveSortUnavailable}</p>
+        ) : (
+          <label className="min-w-36">
+            {m.sort}
+            <select name="sort" defaultValue={q.sort}>
+              <option value="relevance">{m.relevance}</option>
+              <option value="newest">{m.newest}</option>
+              <option value="oldest">{m.oldest}</option>
+            </select>
+          </label>
+        )}
         <Button type="submit">{m.search}</Button>
         <Link
           className="py-2 text-sm muted underline"

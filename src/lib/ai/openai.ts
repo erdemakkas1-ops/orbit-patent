@@ -16,14 +16,15 @@ import type { AiProvider } from "./provider";
 import { reserveModelCall } from "./budget";
 import { calculateCost, calculateDifficulty } from "./engines";
 import { serverEnv } from "@/lib/env";
-import { safeAiErrorDetails } from "./error-log";
+import { AiCreditCircuit, safeAiErrorDetails } from "./error-log";
+const creditCircuit = new AiCreditCircuit();
 export class OpenAiProvider implements AiProvider {
   readonly source = "openai" as const;
   readonly model = serverEnv.OPENAI_MODEL || "gpt-4.1-mini";
   private client = new OpenAI({
     apiKey: serverEnv.OPENAI_API_KEY,
-    timeout: 25000,
-    maxRetries: 1,
+    timeout: 15000,
+    maxRetries: 0,
   });
   private async run<T extends z.ZodType>(
     schema: T,
@@ -31,6 +32,7 @@ export class OpenAiProvider implements AiProvider {
     data: unknown,
     locale: Locale,
   ): Promise<z.infer<T>> {
+    const releaseCreditProbe = await creditCircuit.enter();
     const started = Date.now();
     try {
       reserveModelCall();
@@ -48,8 +50,10 @@ export class OpenAiProvider implements AiProvider {
         text: { format: zodTextFormat(schema, name) },
       });
       if (!result.output_parsed) throw new Error("AI_NO_STRUCTURED_OUTPUT");
+      creditCircuit.observeSuccess();
       return schema.parse(result.output_parsed);
     } catch (error) {
+      creditCircuit.observe(error);
       console.error(
         "[ORBIT_AI_ERROR]",
         JSON.stringify(
@@ -57,6 +61,8 @@ export class OpenAiProvider implements AiProvider {
         ),
       );
       throw error;
+    } finally {
+      releaseCreditProbe();
     }
   }
   analyzeProjectIntent(text: string, l: Locale) {

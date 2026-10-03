@@ -21,6 +21,8 @@ export const messages = {
     discoverByStatus: "Duruma Göre Keşfet",
     liveStatusUnavailable:
       "Hukuki durum filtresi canlı EPO keşfinde kullanılamıyor.",
+    liveSortUnavailable:
+      "Canlı EPO sonuçları sağlayıcının güvenilir sonuç sırasıyla gösterilir.",
     unclassified: "Sınıflandırılmamış",
     discoverByYear: "Yıllara Göre Keşfet",
     featured: "Öne Çıkan",
@@ -251,6 +253,8 @@ export const messages = {
     discoverByStatus: "Discover by Status",
     liveStatusUnavailable:
       "Legal status filtering is unavailable for live EPO discovery.",
+    liveSortUnavailable:
+      "Live EPO results use the provider's reliable result order.",
     unclassified: "Unclassified",
     discoverByYear: "Discover by Year",
     featured: "Featured",
