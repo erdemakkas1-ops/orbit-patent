@@ -4,6 +4,7 @@ import type { Locale, Patent } from "@/types/patent";
 import { messages } from "@/lib/i18n/messages";
 import { categorizePatent } from "@/lib/patents/discovery";
 import { patentDisplay, safeText } from "@/lib/ai/safety";
+import { cardDrawingUrl } from "@/lib/patents/drawing-url";
 import { ExpandingPatentCard } from "@/components/ui/expanding-patent-card";
 
 export function DiscoverCard({
@@ -17,12 +18,10 @@ export function DiscoverCard({
   const display = patentDisplay(patent, locale, m.noData);
   const category = categorizePatent(patent);
   const drawing = patent.drawings[0];
-  const drawingUrl = drawing?.url.startsWith("/api/patents/")
-    ? `${drawing.url}${drawing.url.includes("?") ? "&" : "?"}variant=card`
-    : drawing?.url;
+  const drawingUrl = drawing ? cardDrawingUrl(drawing.url) : undefined;
   return (
     <ExpandingPatentCard className="discover-card flex flex-col overflow-hidden">
-      <div className="card-media flex h-40 items-center justify-center border-b">
+      <div className="card-media flex h-56 items-center justify-center border-b">
         {drawing && drawingUrl ? (
           <Image
             className="h-full w-full object-contain"

@@ -67,6 +67,10 @@ import {
 import { publicErrorCode } from "../src/lib/errors";
 import { buildMetadata, seoCopy, siteUrl } from "../src/lib/seo";
 import { stableCacheKey } from "../src/lib/cache-key";
+import {
+  CARD_DRAWING_VERSION,
+  cardDrawingUrl,
+} from "../src/lib/patents/drawing-url";
 import { admitAiRequest } from "../src/lib/rate-limit";
 import { normalizeProjectText } from "../src/lib/ai/input";
 import {
@@ -493,6 +497,48 @@ test("card drawing trim falls back when the detected content is suspiciously tin
   const card = await trimPatentDrawingForCard(original);
   assert.equal(Buffer.from(card).equals(original), true);
 });
+test("card drawing trim excludes a separated standard page header", async () => {
+  const original = await sharp({
+    create: {
+      width: 400,
+      height: 600,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .composite([
+      {
+        input: {
+          create: {
+            width: 250,
+            height: 20,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 75,
+        top: 25,
+      },
+      {
+        input: {
+          create: {
+            width: 220,
+            height: 300,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+          },
+        },
+        left: 90,
+        top: 180,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  const metadata = await sharp(card).metadata();
+  assert.equal(metadata.width, 236);
+  assert.equal(metadata.height, 316);
+});
 test("card and full drawing variants share one upstream page and cache separately", async () => {
   const tiff = await sharp({
     create: {
@@ -540,6 +586,14 @@ test("card and full drawing variants share one upstream page and cache separatel
   assert.equal(await service.getDrawingPage("EP1234567A1", 1, "full"), full);
   assert.equal(await service.getDrawingPage("EP1234567A1", 1, "card"), card);
   assert.equal(binaryCalls, 1);
+});
+test("card drawing URLs use a stable cache version without changing static assets", () => {
+  assert.equal(CARD_DRAWING_VERSION, "2");
+  assert.equal(
+    cardDrawingUrl("/api/patents/EP123A1/drawings/1"),
+    "/api/patents/EP123A1/drawings/1?variant=card&v=2",
+  );
+  assert.equal(cardDrawingUrl("/drawings/mock.svg"), "/drawings/mock.svg");
 });
 test("EPO auth caches a token and coalesces concurrent requests", async () => {
   const original = globalThis.fetch;

@@ -4,6 +4,7 @@ import Image from "next/image";
 import type { Patent, Locale } from "@/types/patent";
 import { messages } from "@/lib/i18n/messages";
 import { finiteClamp, patentDisplay, safeText } from "@/lib/ai/safety";
+import { cardDrawingUrl } from "@/lib/patents/drawing-url";
 import { ExpandingPatentCard } from "@/components/ui/expanding-patent-card";
 export function PatentCard({
   patent: p,
@@ -21,9 +22,7 @@ export function PatentCard({
   const m = messages[locale];
   const display = patentDisplay(p, locale, m.noData);
   const drawing = p.drawings[0];
-  const drawingUrl = drawing?.url.startsWith("/api/patents/")
-    ? `${drawing.url}${drawing.url.includes("?") ? "&" : "?"}variant=card`
-    : drawing?.url;
+  const drawingUrl = drawing ? cardDrawingUrl(drawing.url) : undefined;
   const safeScore =
     score === undefined ? undefined : Math.round(finiteClamp(score, 0, 100, 0));
   return (
@@ -31,7 +30,7 @@ export function PatentCard({
       selected={selected}
       className="flex flex-col overflow-hidden"
     >
-      <div className="card-media flex h-32 items-center justify-center border-b">
+      <div className="card-media flex h-52 items-center justify-center border-b">
         {drawing && drawingUrl ? (
           <Image
             className="h-full w-full object-contain"

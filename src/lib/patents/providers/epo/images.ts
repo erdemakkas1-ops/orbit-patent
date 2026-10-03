@@ -35,6 +35,48 @@ const CARD_TRIM_MIN_DIMENSION = 64;
 const CARD_TRIM_MIN_RATIO = 0.025;
 const CARD_TRIM_MIN_AREA_RATIO = 0.005;
 
+async function removeStandardPatentHeader(body: Buffer) {
+  const sample = await sharp(body)
+    .resize({ width: 510, withoutEnlargement: true })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height } = sample.info;
+  const rows = Array.from({ length: height }, (_, y) => {
+    const start = y * width;
+    for (let x = 0; x < width; x += 1)
+      if (sample.data[start + x] < 225) return true;
+    return false;
+  });
+  const firstInk = rows.findIndex(Boolean);
+  if (firstInk < 0 || firstInk >= height * 0.08) return body;
+  const minimumGap = Math.max(4, Math.round(height * 0.025));
+  const searchEnd = Math.round(height * 0.3);
+  let gap = 0;
+  for (let y = firstInk; y < searchEnd; y += 1) {
+    gap = rows[y] ? 0 : gap + 1;
+    if (gap < minimumGap || !rows.slice(y + 1).some(Boolean)) continue;
+    const sourceMetadata = await sharp(body).metadata();
+    const sourceHeight = sourceMetadata.height ?? 0;
+    if (!sourceHeight) return body;
+    const top = Math.max(
+      0,
+      Math.floor(((y - gap + 1) / height) * sourceHeight),
+    );
+    if (top < sourceHeight * 0.02 || top > sourceHeight * 0.2) return body;
+    return sharp(body)
+      .extract({
+        left: 0,
+        top,
+        width: sourceMetadata.width ?? 1,
+        height: sourceHeight - top,
+      })
+      .png()
+      .toBuffer();
+  }
+  return body;
+}
+
 export async function trimPatentDrawingForCard(body: Uint8Array) {
   const original = Buffer.from(body);
   try {
@@ -42,7 +84,12 @@ export async function trimPatentDrawingForCard(body: Uint8Array) {
     const originalWidth = originalMetadata.width ?? 0;
     const originalHeight = originalMetadata.height ?? 0;
     if (!originalWidth || !originalHeight) return new Uint8Array(original);
-    const trimmed = await sharp(original)
+    const normalized = await sharp(original)
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .png()
+      .toBuffer();
+    const contentPage = await removeStandardPatentHeader(normalized);
+    const trimmed = await sharp(contentPage)
       .trim({
         background: { r: 255, g: 255, b: 255 },
         threshold: CARD_TRIM_THRESHOLD,
