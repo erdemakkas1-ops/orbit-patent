@@ -27,10 +27,10 @@ export function PatentCard({
       selected={selected}
       className="flex flex-col overflow-hidden"
     >
-      <div className="card-media flex h-36 items-center justify-center border-b">
+      <div className="card-media flex h-32 items-center justify-center border-b">
         {p.drawings[0] ? (
           <Image
-            className="h-full w-full object-contain p-3"
+            className="h-full w-full object-contain"
             src={p.drawings[0].url}
             alt={safeText(p.drawings[0].caption[locale], m.noDrawing, 200)}
             width={290}

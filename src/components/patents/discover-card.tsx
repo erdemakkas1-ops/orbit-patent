@@ -18,10 +18,10 @@ export function DiscoverCard({
   const category = categorizePatent(patent);
   return (
     <ExpandingPatentCard className="discover-card flex flex-col overflow-hidden">
-      <div className="card-media flex h-44 items-center justify-center border-b">
+      <div className="card-media flex h-40 items-center justify-center border-b">
         {patent.drawings[0] ? (
           <Image
-            className="h-full w-full object-contain p-3"
+            className="h-full w-full object-contain"
             src={patent.drawings[0].url}
             alt={safeText(patent.drawings[0].caption[locale], m.noDrawing, 200)}
             width={420}
