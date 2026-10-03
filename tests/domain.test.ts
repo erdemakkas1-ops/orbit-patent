@@ -1681,7 +1681,11 @@ test("patent cards format publication numbers and shouting titles", () => {
   assert.equal(formatPublicationNumber("EP1234567A1"), "EP 1234567 A1");
   assert.equal(formatPublicationNumber("WO-odd"), "WO-odd");
   assert.equal(readableTitle("ROBOTIC FOOT SENSOR", "en"), "Robotic foot sensor");
-  assert.equal(readableTitle("IŞIK SENSÖRÜ", "tr"), "Işık sensörü");
+  assert.equal(readableTitle("İKİ IŞIKLI LAMBA", "tr"), "İki ışıklı lamba");
+  assert.equal(
+    readableTitle("PIL ENERJI DEPOLAMA SISTEMI", "tr"),
+    "Pil enerji depolama sistemi",
+  );
   assert.equal(readableTitle("Robot system", "en"), "Robot system");
 });
 

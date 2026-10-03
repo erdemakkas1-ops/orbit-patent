@@ -22,7 +22,10 @@ export function readableTitle(title: string, locale: Locale) {
   const letters = title.replace(/[^\p{L}]/gu, "");
   if (letters.length < 4 || letters !== letters.toLocaleUpperCase(locale))
     return title;
-  const lower = title.toLocaleLowerCase(locale);
+  // Caps typed without a dotted "İ" were not cased by Turkish rules
+  // ("PIL ENERJI" means "pil", not "pıl"), so fold "I" the English way.
+  const rules = locale === "tr" && !title.includes("İ") ? "en" : locale;
+  const lower = title.toLocaleLowerCase(rules);
   return lower.charAt(0).toLocaleUpperCase(locale) + lower.slice(1);
 }
 
