@@ -405,7 +405,7 @@ export class EpoOpsPatentProvider implements PatentProvider {
     });
     // A full page is shared across instances; a short one may be a hiccup.
     if (patents.length === filters.pageSize)
-      void durableSet(key, result, EPO_CONFIG.durableDiscoveryCacheMs);
+      await durableSet(key, result, EPO_CONFIG.durableDiscoveryCacheMs);
     return result;
   }
   async getFeaturedPatents(limit = 6): Promise<Patent[]> {
@@ -536,7 +536,7 @@ export class EpoOpsPatentProvider implements PatentProvider {
     });
     // Share complete records only: a transient drawing failure must not stick.
     if (patent && patent.drawingStatus !== "unavailable")
-      void durableSet(durableKey, patent, EPO_CONFIG.durableDetailCacheMs);
+      await durableSet(durableKey, patent, EPO_CONFIG.durableDetailCacheMs);
     return patent;
   }
   getPatentDrawings(id: string) {
@@ -562,8 +562,8 @@ export class EpoOpsPatentProvider implements PatentProvider {
         this.client
           .request(`family/publication/docdb/${docdb}/biblio,legal`)
           .then(parseEpoFamilyLegal)
-          .then((parsed) => {
-            void durableSet(
+          .then(async (parsed) => {
+            await durableSet(
               durableKey,
               parsed,
               EPO_CONFIG.durableDetailCacheMs,
@@ -596,7 +596,7 @@ export class EpoOpsPatentProvider implements PatentProvider {
       // 404 covers both "no claims" and offices OPS has no full text for (US).
       if (!isEpoNotFound(error)) throw error;
     }
-    void durableSet(key, { claims }, EPO_CONFIG.durableClaimsCacheMs);
+    await durableSet(key, { claims }, EPO_CONFIG.durableClaimsCacheMs);
     return claims;
   }
   async getPatentFamily(id: string) {

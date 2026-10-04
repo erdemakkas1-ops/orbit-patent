@@ -68,6 +68,11 @@ export async function durableGet<T>(key: string): Promise<T | undefined> {
   }
 }
 
+/**
+ * Await it: on serverless a write left running after the response can be
+ * cut off when the instance is frozen, and the value is then never shared.
+ * It never throws and is bounded by TIMEOUT_MS.
+ */
 export async function durableSet(key: string, value: unknown, ttlMs: number) {
   if (!durableCacheEnabled || value === undefined) return;
   try {

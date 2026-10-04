@@ -131,7 +131,7 @@ export async function localizePatentsWithProvider(
         if (!translation.title) continue;
         resolved.set(miss.index, translation);
         translationCache.set(miss.key, ttl, translation);
-        void durableSet(miss.key, translation, ttl);
+        await durableSet(miss.key, translation, ttl);
       }
     }),
   );

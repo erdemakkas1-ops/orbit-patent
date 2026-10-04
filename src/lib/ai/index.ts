@@ -82,7 +82,7 @@ function cachedAi<T>(
     if (stored !== undefined) return stored;
     return withDevelopmentFallback(async () => {
       const value = await primary();
-      if (aiProvider.source === "openai") void durableSet(key, value, durableTtl);
+      if (aiProvider.source === "openai") await durableSet(key, value, durableTtl);
       return value;
     }, fallback);
   });
