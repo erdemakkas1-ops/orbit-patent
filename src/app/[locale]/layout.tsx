@@ -7,6 +7,7 @@ import { MobileMenu } from "@/components/layout/mobile-menu";
 import { NavLinks } from "@/components/layout/nav-links";
 import type { Metadata } from "next";
 import { buildMetadata, seoCopy } from "@/lib/seo";
+import { legalPages } from "@/lib/legal-content";
 
 export async function generateMetadata({
   params,
@@ -54,8 +55,17 @@ export default async function Layout({
         <main id="main" className="shell py-12">
           {children}
         </main>
-        <footer className="site-footer shell border-t py-7 text-sm muted">
-          {m.footer}
+        <footer className="site-footer shell flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-t py-7 text-sm muted">
+          <span>
+            {m.footer} · {m.notLegalAdvice}
+          </span>
+          <nav aria-label={m.legal} className="footer-links">
+            {legalPages.map((page) => (
+              <Link key={page} href={`/${locale}/legal/${page}`}>
+                {m.legalLinks[page]}
+              </Link>
+            ))}
+          </nav>
         </footer>
       </body>
     </html>

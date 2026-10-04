@@ -4,8 +4,12 @@ export function resolvePatentLegalStatus(
   events: LegalEvent[],
   jurisdiction?: string,
 ): LegalStatus {
+  // Administrative records (assignments, reminders, designations) never change
+  // whether a patent is in force, so they take no part in the state machine.
   const scope = events.filter(
-    (e) => !jurisdiction || e.jurisdiction === jurisdiction,
+    (e) =>
+      e.kind !== "ADMINISTRATIVE" &&
+      (!jurisdiction || e.jurisdiction === jurisdiction),
   );
   if (!scope.length || new Set(scope.map((e) => e.jurisdiction)).size !== 1)
     return LegalStatus.UNKNOWN;
@@ -24,6 +28,7 @@ export function resolvePatentLegalStatus(
     const e = ordered[i];
     if (ordered[i + 1]?.date === e.date && ordered[i + 1].kind !== e.kind)
       return LegalStatus.UNKNOWN;
+    if (e.kind === "ADMINISTRATIVE") continue;
     if (e.kind === "UNMAPPED") {
       state = LegalStatus.UNKNOWN;
       continue;

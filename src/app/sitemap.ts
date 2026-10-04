@@ -1,9 +1,16 @@
 import type { MetadataRoute } from "next";
 import { siteUrl } from "@/lib/seo";
+import { legalPages } from "@/lib/legal-content";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteUrl().toString().replace(/\/$/, "");
-  const routes = ["", "/discover", "/patents", "/ai-search"];
+  const routes = [
+    "",
+    "/discover",
+    "/patents",
+    "/ai-search",
+    ...legalPages.map((page) => `/legal/${page}`),
+  ];
   // TODO(M9): add real patent detail URLs when the live EPO source is approved.
   return (["tr", "en"] as const).flatMap((locale) =>
     routes.map((route) => ({

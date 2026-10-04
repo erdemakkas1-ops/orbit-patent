@@ -1,4 +1,9 @@
-import type { Locale, Patent } from "@/types/patent";
+import {
+  LegalStatus,
+  type LegalEventKind,
+  type Locale,
+  type Patent,
+} from "@/types/patent";
 
 /**
  * Splits a docdb publication number into a readable form:
@@ -29,12 +34,55 @@ export function readableTitle(title: string, locale: Locale) {
   return lower.charAt(0).toLocaleUpperCase(locale) + lower.slice(1);
 }
 
-/** Jurisdiction the legal status refers to: latest legal event, else the publishing office. */
+/** The original publication on Espacenet, the EPO's public viewer. */
+export function espacenetUrl(publicationNumber: string) {
+  return `https://worldwide.espacenet.com/patent/search?q=pn%3D${encodeURIComponent(publicationNumber.replace(/\s+/g, ""))}`;
+}
+
+/** Legal status is national: it always refers to the publishing office. */
 export function statusJurisdiction(patent: Patent) {
-  const latest = [...patent.legalEvents]
-    .sort((a, b) => a.date.localeCompare(b.date))
+  return patent.publicationNumber.slice(0, 2).toUpperCase();
+}
+
+/** Year of the latest event that put the patent in its current status. */
+export function statusYear(patent: Patent) {
+  if (patent.legalStatus === LegalStatus.UNKNOWN) return undefined;
+  const kinds: Partial<Record<LegalStatus, LegalEventKind[]>> = {
+    [LegalStatus.ACTIVE]: ["GRANTED", "REINSTATED", "RENEWED"],
+    [LegalStatus.EXPIRED]: ["EXPIRED"],
+    [LegalStatus.LAPSED]: ["LAPSED"],
+    [LegalStatus.WITHDRAWN]: ["WITHDRAWN"],
+    [LegalStatus.ABANDONED]: ["ABANDONED"],
+    [LegalStatus.REVOKED]: ["REVOKED"],
+  };
+  const wanted = kinds[patent.legalStatus] ?? [];
+  return patent.legalEvents
+    .filter((event) => wanted.includes(event.kind))
+    .map((event) => event.date.slice(0, 4))
+    .sort()
     .at(-1);
-  return latest?.jurisdiction || patent.publicationNumber.slice(0, 2);
+}
+
+// Patents last at most 20 years from filing, plus at most 5 of supplementary
+// protection; past that, protection has ended whatever the register shows.
+const MAX_PROTECTION_YEARS = 25;
+
+/**
+ * True when no register status is known but the filing is old enough that
+ * protection must have ended. Shown as an estimate, never as a status.
+ */
+export function likelyExpired(patent: Patent, now = new Date()) {
+  if (patent.legalStatus !== LegalStatus.UNKNOWN) return false;
+  const filed = Number(
+    /^\d{4}/.exec(
+      patent.priorityDate || patent.applicationDate || patent.publicationDate,
+    )?.[0],
+  );
+  return (
+    Number.isFinite(filed) &&
+    filed > 0 &&
+    now.getUTCFullYear() - filed > MAX_PROTECTION_YEARS
+  );
 }
 
 export function formatShortDate(value: string, locale: Locale) {

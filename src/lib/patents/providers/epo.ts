@@ -1,10 +1,12 @@
 import type { PatentProvider } from "./provider";
+import { durableGet, durableSet } from "@/lib/durable-cache";
 import type {
   Patent,
   PatentSearch,
   SearchResult,
   LegalEvent,
   DiscoveryFilters,
+  PatentClaims,
 } from "@/types/patent";
 import { EPO_CONFIG } from "./epo/config";
 import { EpoAuth } from "./epo/auth";
@@ -20,6 +22,8 @@ import {
 import { EpoImageService } from "./epo/images";
 import { discoverySearchTerms, featuredScore } from "@/lib/patents/discovery";
 import { parseEpoFamilyLegal } from "./epo/family";
+import { parseEpoClaims } from "./epo/claims";
+import { resolvePatentLegalStatus } from "@/lib/patents/legal-status/resolve";
 
 export type EpoResponseMetadata = {
   path: string;
@@ -220,6 +224,12 @@ export class EpoOpsClient {
 type CacheEntry<T> = { expires: number; value: T };
 
 export const EPO_DISCOVERY_CONCURRENCY = 3;
+/**
+ * Curated surfaces (discover, featured) stay on granting offices with English
+ * bibliographic data, legal events and good drawings. WO is left out: an
+ * international application never becomes a patent with a register status.
+ */
+export const DISCOVERY_OFFICES = ["US", "EP", "GB"] as const;
 
 function hasBibliographicData(patent: Patent) {
   const publication = patent.publicationNumber.replace(/\s/g, "").toUpperCase();
@@ -239,6 +249,12 @@ function hasBibliographicData(patent: Patent) {
     patent.ipc.length,
   );
 }
+
+const inventionKey = (patent: Patent) =>
+  [
+    (patent.title.en || patent.title.tr).toLowerCase().replace(/\W+/g, " ").trim(),
+    (patent.applicants[0] ?? "").toLowerCase().replace(/\W+/g, " ").trim(),
+  ].join("|");
 
 export async function hydratePatentReferences(
   references: Patent[],
@@ -260,6 +276,7 @@ export async function hydratePatentReferences(
     ).values(),
   ];
   const hydrated: Patent[] = [];
+  const inventions = new Set<string>();
   for (let index = 0; index < unique.length && hydrated.length < safeLimit;) {
     const batch = unique.slice(index, index + batchSize);
     index += batch.length;
@@ -271,8 +288,14 @@ export async function hydratePatentReferences(
         result.status === "fulfilled" &&
         result.value &&
         hasBibliographicData(result.value)
-      )
+      ) {
+        // Divisionals and sibling filings repeat the same invention under
+        // another number; one card per invention is enough.
+        const invention = inventionKey(result.value);
+        if (inventions.has(invention)) continue;
+        inventions.add(invention);
         hydrated.push(result.value);
+      }
       if (hydrated.length === safeLimit) break;
     }
   }
@@ -330,13 +353,16 @@ export class EpoOpsPatentProvider implements PatentProvider {
     const cached = this.discoveryCache.get(key);
     if (cached && cached.expires > Date.now()) return cached.value;
     const references = await this.searchPatents({
+      offices: DISCOVERY_OFFICES,
       anyTerms: filters.category
         ? discoverySearchTerms[filters.category]
         : Object.values(discoverySearchTerms).flat(),
       yearRange: filters.yearRange,
       sort: filters.sort === "featured" ? "relevance" : filters.sort,
       page: filters.page,
-      pageSize: filters.pageSize,
+      // Small offices often have no bibliographic record to hydrate; draw a
+      // double pool so a page still fills up with real cards.
+      pageSize: Math.min(EPO_CONFIG.pageSize, filters.pageSize * 2),
     });
     const patents = await hydratePatentReferences(
       references.patents,
@@ -371,6 +397,7 @@ export class EpoOpsPatentProvider implements PatentProvider {
       return cached.value.slice(0, safeLimit);
     const candidateLimit = Math.min(6, Math.max(safeLimit, safeLimit * 2));
     const result = await this.searchPatents({
+      offices: DISCOVERY_OFFICES,
       anyTerms: [
         ...discoverySearchTerms.robotics,
         ...discoverySearchTerms.sensors,
@@ -400,6 +427,15 @@ export class EpoOpsPatentProvider implements PatentProvider {
     const normalizedId = toRouteIdentifier(identifier);
     const cached = this.detailCache.get(normalizedId);
     if (cached && cached.expires > Date.now()) return cached.value;
+    const durableKey = `epo-detail:${normalizedId}`;
+    const stored = await durableGet<Patent>(durableKey);
+    if (stored) {
+      this.detailCache.set(normalizedId, {
+        value: stored,
+        expires: Date.now() + EPO_CONFIG.detailCacheMs,
+      });
+      return stored;
+    }
     const request = async (format: "EPODOC" | "DOCDB", path: string) =>
       this.client.request(path, undefined, undefined, (metadata) => {
         if (process.env.NODE_ENV !== "development") return;
@@ -448,20 +484,37 @@ export class EpoOpsPatentProvider implements PatentProvider {
     }
     const patent = parseEpoBiblio(xml);
     if (patent) {
-      try {
-        patent.drawings = await this.images.getDrawings(
-          patent.publicationNumber || normalizedId,
-        );
+      const [drawings, familyLegal] = await Promise.allSettled([
+        this.images.getDrawings(patent.publicationNumber || normalizedId),
+        this.getFamilyMetadata(normalizedId),
+      ]);
+      if (drawings.status === "fulfilled") {
+        patent.drawings = drawings.value;
         patent.drawingStatus = patent.drawings.length ? "available" : "none";
-      } catch {
+      } else {
         patent.drawings = [];
         patent.drawingStatus = "unavailable";
+      }
+      if (familyLegal.status === "fulfilled") {
+        // Status is national: only this publication's own office counts.
+        const country = patent.publicationNumber.slice(0, 2).toUpperCase();
+        patent.legalEvents = familyLegal.value.legalEvents.filter(
+          (event) => event.jurisdiction === country,
+        );
+        patent.legalStatus = resolvePatentLegalStatus(
+          patent.legalEvents,
+          country,
+        );
+        if (!patent.family.length) patent.family = familyLegal.value.family;
       }
     }
     this.detailCache.set(normalizedId, {
       value: patent,
       expires: Date.now() + EPO_CONFIG.detailCacheMs,
     });
+    // Share complete records only: a transient drawing failure must not stick.
+    if (patent && patent.drawingStatus !== "unavailable")
+      void durableSet(durableKey, patent, EPO_CONFIG.durableDetailCacheMs);
     return patent;
   }
   getPatentDrawings(id: string) {
@@ -478,15 +531,51 @@ export class EpoOpsPatentProvider implements PatentProvider {
     if (cached && cached.expires > Date.now()) return cached.value;
     const docdb = toDocdbIdentifier(identifier);
     if (!docdb) return Promise.resolve({ family: [], legalEvents: [] });
-    const value = this.client
-      .request(`family/publication/docdb/${docdb}/biblio,legal`)
-      .then(parseEpoFamilyLegal)
-      .catch(() => ({ family: [], legalEvents: [] }));
+    const durableKey = `epo-family:${key}`;
+    const value = durableGet<ReturnType<typeof parseEpoFamilyLegal>>(
+      durableKey,
+    ).then(
+      (stored) =>
+        stored ??
+        this.client
+          .request(`family/publication/docdb/${docdb}/biblio,legal`)
+          .then(parseEpoFamilyLegal)
+          .then((parsed) => {
+            void durableSet(
+              durableKey,
+              parsed,
+              EPO_CONFIG.durableDetailCacheMs,
+            );
+            return parsed;
+          })
+          .catch(() => ({ family: [], legalEvents: [] })),
+    );
     this.familyCache.set(key, {
       value,
       expires: Date.now() + EPO_CONFIG.detailCacheMs,
     });
     return value;
+  }
+  async getPatentClaims(id: string): Promise<PatentClaims | null> {
+    const identifier = parsePatentIdentifier(id);
+    if (!identifier) throw new Error("EPO_INVALID_IDENTIFIER");
+    const key = `epo-claims:${toRouteIdentifier(identifier)}`;
+    // Wrapped so "this office has no full text" is cached too.
+    const stored = await durableGet<{ claims: PatentClaims | null }>(key);
+    if (stored) return stored.claims;
+    let claims: PatentClaims | null = null;
+    try {
+      claims = parseEpoClaims(
+        await this.client.request(
+          `published-data/publication/epodoc/${toEpodocIdentifier(identifier)}/claims`,
+        ),
+      );
+    } catch (error) {
+      // 404 covers both "no claims" and offices OPS has no full text for (US).
+      if (!isEpoNotFound(error)) throw error;
+    }
+    void durableSet(key, { claims }, EPO_CONFIG.durableClaimsCacheMs);
+    return claims;
   }
   async getPatentFamily(id: string) {
     return (await this.getFamilyMetadata(id)).family;

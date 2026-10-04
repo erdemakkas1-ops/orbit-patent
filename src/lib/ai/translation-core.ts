@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { AiProvider } from "./provider";
 import { AsyncTtlCache } from "./cache";
 import { stableCacheKey } from "@/lib/cache-key";
+import { durableGet, durableSet } from "@/lib/durable-cache";
 import type { Locale, Patent, PatentTextTranslation } from "@/types/patent";
 
 const ttl = 30 * 24 * 60 * 60_000;
@@ -62,12 +63,22 @@ export async function localizePatentsWithProvider(
     key: string;
     source: PatentTextTranslation;
   }[] = [];
-  for (const [index, patent] of patents.entries()) {
-    if (!needsTurkishTranslation(patent)) continue;
-    const key = patentTranslationCacheKey(patent, locale, provider);
-    const hit = translationCache.get<PatentTextTranslation>(key);
-    if (hit) resolved.set(index, await hit);
-    else misses.push({ index, key, source: sourceText(patent) });
+  const lookups = await Promise.all(
+    [...patents.entries()]
+      .filter(([, patent]) => needsTurkishTranslation(patent))
+      .map(async ([index, patent]) => {
+        const key = patentTranslationCacheKey(patent, locale, provider);
+        const hit =
+          (await translationCache.get<PatentTextTranslation>(key)) ??
+          (await durableGet<PatentTextTranslation>(key));
+        return { index, key, patent, hit };
+      }),
+  );
+  for (const { index, key, patent, hit } of lookups) {
+    if (hit) {
+      resolved.set(index, hit);
+      translationCache.set(key, ttl, hit);
+    } else misses.push({ index, key, source: sourceText(patent) });
   }
 
   // Small parallel batches: one long batch can exceed the model timeout and
@@ -95,6 +106,7 @@ export async function localizePatentsWithProvider(
         if (!translation.title) continue;
         resolved.set(miss.index, translation);
         translationCache.set(miss.key, ttl, translation);
+        void durableSet(miss.key, translation, ttl);
       }
     }),
   );

@@ -1,12 +1,19 @@
 import "server-only";
 import { MockAiProvider } from "./mock";
 import { OpenAiProvider } from "./openai";
-import type { Locale, Patent } from "@/types/patent";
+import type { Locale, Patent, PatentClaim } from "@/types/patent";
 import type { AiProvider } from "./provider";
-import type { Analysis, ProjectIntent } from "@/types/ai";
+import type {
+  Analysis,
+  ClaimScope,
+  DevelopmentDirection,
+  DevelopmentHypothesis,
+  ProjectIntent,
+} from "@/types/ai";
 import { AsyncTtlCache, allowsMockFallback } from "./cache";
 import { providerModes, serverEnv } from "@/lib/env";
 import { stableCacheKey } from "@/lib/cache-key";
+import { durableGet, durableSet } from "@/lib/durable-cache";
 const mock = new MockAiProvider();
 class UnavailableAiProvider implements AiProvider {
   readonly source = "openai" as const;
@@ -24,6 +31,12 @@ class UnavailableAiProvider implements AiProvider {
     return this.fail();
   }
   suggestModernization(): never {
+    return this.fail();
+  }
+  developPatent(): never {
+    return this.fail();
+  }
+  summarizeClaims(): never {
     return this.fail();
   }
   translatePatentTexts(): never {
@@ -49,10 +62,30 @@ export const aiProvider: AiProvider =
         : mock;
 const ttl =
   process.env.NODE_ENV === "production" ? 24 * 60 * 60_000 : 2 * 60_000;
+// Analyses of a published patent do not go stale; keep them shared for a month.
+const durableTtl = 30 * 24 * 60 * 60_000;
 const cache = new AsyncTtlCache();
 let usedDevelopmentFallback = false;
-async function cached<T>(key: string, action: () => Promise<T>): Promise<T> {
-  return cache.getOrCreate(key, ttl, action);
+/**
+ * Memory first, then the shared durable cache, then the model. Only real model
+ * output is persisted; development mock fallbacks stay in memory.
+ */
+function cachedAi<T>(
+  key: string,
+  primary: () => Promise<T>,
+  fallback: () => Promise<T>,
+  { shared = true }: { shared?: boolean } = {},
+): Promise<T> {
+  return cache.getOrCreate(key, ttl, async () => {
+    if (!shared) return withDevelopmentFallback(primary, fallback);
+    const stored = await durableGet<T>(key);
+    if (stored !== undefined) return stored;
+    return withDevelopmentFallback(async () => {
+      const value = await primary();
+      if (aiProvider.source === "openai") void durableSet(key, value, durableTtl);
+      return value;
+    }, fallback);
+  });
 }
 async function withDevelopmentFallback<T>(
   primary: () => Promise<T>,
@@ -84,14 +117,16 @@ export function analyzeProjectIntent(
 ): Promise<ProjectIntent> {
   const key = stableCacheKey("ai-intent", {
     provider: aiProvider.source,
+    model: aiProvider.model,
     locale,
     text: text.trim().toLocaleLowerCase(),
   });
-  return cached(key, () =>
-    withDevelopmentFallback(
-      () => aiProvider.analyzeProjectIntent(text, locale),
-      () => mock.analyzeProjectIntent(text, locale),
-    ),
+  // A user's project description stays out of the shared durable cache.
+  return cachedAi(
+    key,
+    () => aiProvider.analyzeProjectIntent(text, locale),
+    () => mock.analyzeProjectIntent(text, locale),
+    { shared: false },
   );
 }
 export async function analyzePatent(
@@ -102,25 +137,23 @@ export async function analyzePatent(
     id: p.id,
     locale,
     provider: aiProvider.source,
+    model: aiProvider.model,
   });
   const [simplification, build, modernization] = await Promise.all([
-    cached(`${base}:simplification`, () =>
-      withDevelopmentFallback(
-        () => aiProvider.simplifyPatent(p, locale),
-        () => mock.simplifyPatent(p, locale),
-      ),
+    cachedAi(
+      `${base}:simplification`,
+      () => aiProvider.simplifyPatent(p, locale),
+      () => mock.simplifyPatent(p, locale),
     ),
-    cached(`${base}:build`, () =>
-      withDevelopmentFallback(
-        () => aiProvider.estimateBuild(p, locale),
-        () => mock.estimateBuild(p, locale),
-      ),
+    cachedAi(
+      `${base}:build`,
+      () => aiProvider.estimateBuild(p, locale),
+      () => mock.estimateBuild(p, locale),
     ),
-    cached(`${base}:modernization`, () =>
-      withDevelopmentFallback(
-        () => aiProvider.suggestModernization(p, locale),
-        () => mock.suggestModernization(p, locale),
-      ),
+    cachedAi(
+      `${base}:modernization`,
+      () => aiProvider.suggestModernization(p, locale),
+      () => mock.suggestModernization(p, locale),
     ),
   ]);
   return {
@@ -131,6 +164,46 @@ export async function analyzePatent(
     asOf: new Date().toISOString().slice(0, 10),
     pricingVerified: false,
   };
+}
+/**
+ * Direction-only ideas are shared through the caches. A user's own problem is
+ * private: it is never cached, so it cannot surface in anyone else's results.
+ */
+export function developPatent(
+  p: Patent,
+  direction: DevelopmentDirection,
+  problem: string | null,
+  locale: Locale,
+): Promise<DevelopmentHypothesis[]> {
+  const primary = () => aiProvider.developPatent(p, direction, problem, locale);
+  const fallback = () => mock.developPatent(p, direction, problem, locale);
+  if (problem) return withDevelopmentFallback(primary, fallback);
+  const key = stableCacheKey("ai-develop", {
+    id: p.id,
+    direction,
+    locale,
+    provider: aiProvider.source,
+    model: aiProvider.model,
+  });
+  return cachedAi(key, primary, fallback);
+}
+export function summarizeClaims(
+  p: Patent,
+  claims: PatentClaim[],
+  locale: Locale,
+): Promise<ClaimScope> {
+  const key = stableCacheKey("ai-claim-scope", {
+    id: p.id,
+    claims: claims.map((claim) => claim.number),
+    locale,
+    provider: aiProvider.source,
+    model: aiProvider.model,
+  });
+  return cachedAi(
+    key,
+    () => aiProvider.summarizeClaims(p, claims, locale),
+    () => mock.summarizeClaims(p, claims, locale),
+  );
 }
 export function clearAiCacheForTests() {
   cache.clear();

@@ -29,6 +29,9 @@ export const discoverySearchTerms = {
 } as const satisfies Record<DiscoveryCategory, readonly string[]>;
 
 export const yearRanges = {
+  // Published 26+ years ago: past even the longest term (20 years + 5 of
+  // supplementary protection), counted from a filing before publication.
+  "likely-expired": { to: new Date().getUTCFullYear() - 26 },
   "before-2000": { to: 1999 },
   "2000-2009": { from: 2000, to: 2009 },
   "2010-2019": { from: 2010, to: 2019 },

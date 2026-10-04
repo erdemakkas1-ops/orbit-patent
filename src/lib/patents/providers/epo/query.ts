@@ -19,6 +19,9 @@ export function buildEpoQuery(query: PatentSearch): string {
     clauses.push(
       `(${anyTerms.map((term) => `ta=${cqlValue(term)}`).join(" OR ")})`,
     );
+  const offices = query.offices?.filter((office) => /^[A-Z]{2}$/.test(office));
+  if (offices?.length)
+    clauses.push(`(${offices.map((office) => `pn=${office}`).join(" OR ")})`);
   if (query.cpc) clauses.push(`cpc=${cqlValue(query.cpc.toUpperCase())}`);
   if (query.ipc) clauses.push(`ipc=${cqlValue(query.ipc.toUpperCase())}`);
   if (query.year) clauses.push(`publicationdate=${query.year}`);

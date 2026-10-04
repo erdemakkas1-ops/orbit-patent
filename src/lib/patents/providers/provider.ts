@@ -4,6 +4,7 @@ import type {
   SearchResult,
   LegalEvent,
   DiscoveryFilters,
+  PatentClaims,
 } from "@/types/patent";
 export interface PatentProvider {
   readonly source: "mock" | "epo";
@@ -19,4 +20,6 @@ export interface PatentProvider {
   ): Promise<{ body: Uint8Array; contentType: "image/png" }>;
   discoverPatents?(filters: DiscoveryFilters): Promise<SearchResult>;
   getFeaturedPatents?(limit?: number): Promise<Patent[]>;
+  /** Published claims, or null where the source has no full text (e.g. US on EPO). */
+  getPatentClaims?(id: string): Promise<PatentClaims | null>;
 }

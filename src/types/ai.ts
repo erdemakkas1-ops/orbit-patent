@@ -77,6 +77,32 @@ export const modernizationSchema = z.object({
     )
     .max(8),
 });
+export const developmentDirections = ["cheaper", "smarter", "new-use"] as const;
+export type DevelopmentDirection = (typeof developmentDirections)[number];
+/** Development ideas are hypotheses: each carries its basis, doubt and test. */
+export const developmentSchema = z.object({
+  hypotheses: z
+    .array(
+      z.object({
+        title: short,
+        idea: short,
+        basis: short,
+        uncertainty: short,
+        test: short,
+      }),
+    )
+    .min(1)
+    .max(3),
+});
+export type DevelopmentHypothesis = z.infer<
+  typeof developmentSchema
+>["hypotheses"][number];
+/** Plain-language reading of what the independent claims protect. */
+export const claimScopeSchema = z.object({
+  summary: short,
+  claimNumbers: z.array(z.number().int().min(1).max(500)).max(8),
+});
+export type ClaimScope = z.infer<typeof claimScopeSchema>;
 export const patentTranslationBatchSchema = z.object({
   items: z
     .array(

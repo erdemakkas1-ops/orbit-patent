@@ -20,6 +20,11 @@ import {
   PatentAnalysisLoading,
 } from "@/components/patents/patent-analysis";
 import { PatentFamilyLegal } from "@/components/patents/patent-family-legal";
+import { PatentDevelop } from "@/components/patents/patent-develop";
+import {
+  PatentClaimScope,
+  PatentClaimScopeLoading,
+} from "@/components/patents/patent-claim-scope";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type DetailProps = { params: Promise<{ locale: string; id: string }> };
@@ -76,6 +81,10 @@ export default async function Detail({ params }: DetailProps) {
       <Suspense fallback={<PatentAnalysisLoading locale={locale} />}>
         <PatentAnalysis patent={patent} locale={locale} />
       </Suspense>
+      <Suspense fallback={<PatentClaimScopeLoading locale={locale} />}>
+        <PatentClaimScope patent={patent} locale={locale} />
+      </Suspense>
+      <PatentDevelop patentId={patent.id} locale={locale} />
       <section className="panel mt-6">
         <h2>{m.original}</h2>
         <dl className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">

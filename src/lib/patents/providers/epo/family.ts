@@ -33,17 +33,32 @@ export function mapEpoLegalEvent(
   description: string,
 ): LegalEventKind {
   const value = `${code} ${description}`.toUpperCase();
-  if (/\b(REINSTATED|REINSTATEMENT|RESTORATION)\b/.test(value))
+  if (
+    /\b(REINSTATED|REINSTATEMENT|RESTORATION)\b/.test(value) ||
+    /PETITION RELATED TO MAINTENANCE FEES GRANTED/.test(value)
+  )
     return "REINSTATED";
   if (/\b(REVOKED|REVOCATION)\b/.test(value)) return "REVOKED";
   if (/\b(WITHDRAWN|WITHDRAWAL)\b/.test(value)) return "WITHDRAWN";
   if (/\bABANDON(ED|MENT)?\b/.test(value)) return "ABANDONED";
   if (/\b(EXPIRED|EXPIRY|EXPIRATION)\b/.test(value)) return "EXPIRED";
-  if (/\b(LAPSED|LAPSE|CEASED|NON[- ]PAYMENT)\b/.test(value)) return "LAPSED";
-  if (/\b(RENEWAL|RENEWED|FEE PAYMENT)\b/.test(value)) return "RENEWED";
+  if (/\b(LAPSED|LAPSE|CEASED|NON[- ]PAYMENT|DISCONTINUATION)\b/.test(value))
+    return "LAPSED";
+  if (
+    /\b(RENEWAL|RENEWED|FEE PAYMENT|PAYMENT OF MAINTENANCE FEE)\b/.test(value)
+  )
+    return "RENEWED";
   if (/\b(GRANT OF PATENT|PATENT GRANTED)\b/.test(value)) return "GRANTED";
   if (/\b(APPLICATION FILED|FILING OF APPLICATION)\b/.test(value))
     return "FILED";
+  // Records that never change whether the patent is in force. Anything else
+  // stays UNMAPPED, which keeps the resolver conservative (UNKNOWN).
+  if (
+    /\b(ASSIGNMENT|CHANGE OF NAME|CORRECTION|DESIGNATED (STATES|COUNTRIES)|REMINDER MAILED|WAS DESIGNATED|NON-ENTRY IN EUROPEAN PHASE)\b/.test(
+      value,
+    )
+  )
+    return "ADMINISTRATIVE";
   return "UNMAPPED";
 }
 

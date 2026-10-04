@@ -123,7 +123,22 @@ export default async function DiscoverPage({
         <div>
           <h2>{m.discoverByStatus}</h2>
           {liveDiscovery ? (
-            <p className="notice text-sm">{m.liveStatusUnavailable}</p>
+            <>
+              <div className="flex flex-wrap gap-2">
+                {filterLink(
+                  url({
+                    year:
+                      query.year === "likely-expired"
+                        ? undefined
+                        : "likely-expired",
+                    page: 1,
+                  }),
+                  query.year === "likely-expired",
+                  m.likelyExpiredFilter,
+                )}
+              </div>
+              <p className="muted mt-3 text-sm">{m.likelyExpiredNote}</p>
+            </>
           ) : (
             <div className="flex flex-wrap gap-2">
               {Object.values(LegalStatus).map((status) =>

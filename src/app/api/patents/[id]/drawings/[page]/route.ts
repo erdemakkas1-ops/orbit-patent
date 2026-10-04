@@ -31,8 +31,10 @@ export async function GET(
     return new NextResponse(Buffer.from(drawing.body), {
       headers: {
         "Content-Type": drawing.contentType,
+        // Published drawings never change and card URLs are versioned, so the
+        // CDN keeps them for a month instead of re-rendering on every instance.
         "Cache-Control":
-          "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+          "public, max-age=86400, s-maxage=2592000, stale-while-revalidate=604800",
         "X-Content-Type-Options": "nosniff",
       },
     });

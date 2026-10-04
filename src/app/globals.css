@@ -800,6 +800,12 @@ a:focus-visible,
   font-size: 0.75rem;
   line-height: 1.45;
 }
+/* An estimate, not a register status: lighter, with a dashed edge. */
+.specimen-status.status-estimated {
+  border: 1px dashed var(--warning-border);
+  background: transparent;
+  color: var(--warning-text);
+}
 .specimen-status svg {
   flex: none;
 }
@@ -814,6 +820,121 @@ a:focus-visible,
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.4;
+}
+.legal-page {
+  max-width: 72ch;
+}
+.legal-page h2 {
+  margin-bottom: 0.6rem;
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+.footer-links a {
+  color: var(--muted);
+}
+.footer-links a:hover {
+  color: var(--primary);
+}
+.claim-original {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.claim-original summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.claim-original p {
+  margin: 8px 0 4px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.develop-directions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.develop-direction {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  padding: 12px 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.develop-direction input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.develop-direction:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.develop-direction:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.develop-direction-label {
+  color: var(--ink);
+  font-weight: 650;
+}
+.develop-direction-hint {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.develop-hypotheses {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+/* Hypotheses look different from sourced facts: dashed, tinted, labelled. */
+.develop-hypothesis {
+  border: 1px dashed var(--terracotta-border);
+  border-radius: 10px;
+  background: rgb(var(--accent-rgb) / 0.06);
+  padding: 16px 18px;
+}
+.develop-hypothesis h3 {
+  margin: 4px 0 6px;
+}
+.develop-hypothesis p {
+  margin-bottom: 10px;
+}
+.develop-hypothesis-badge {
+  color: var(--terracotta-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.develop-hypothesis dt {
+  margin-top: 8px;
+  color: var(--terracotta-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.develop-hypothesis dd {
+  margin-bottom: 0;
+  font-size: 0.9375rem;
 }
 .pager a {
   display: inline-flex;
@@ -836,7 +957,8 @@ a:focus-visible,
 }
 /* Inline text links stay comfortably tappable on touch screens. */
 @media (pointer: coarse) {
-  .card-action {
+  .card-action,
+  .footer-links a {
     display: inline-flex;
     min-height: 2.75rem;
     align-items: center;
@@ -879,6 +1001,9 @@ a:focus-visible,
   }
   .discovery-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .develop-directions {
+    grid-template-columns: 1fr;
   }
   .filter-bar > :first-child {
     grid-column: 1 / -1;

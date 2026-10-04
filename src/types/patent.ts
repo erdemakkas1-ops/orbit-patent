@@ -24,6 +24,7 @@ export type LegalEventKind =
   | "WITHDRAWN"
   | "ABANDONED"
   | "REVOKED"
+  | "ADMINISTRATIVE"
   | "UNMAPPED";
 export interface LegalEvent {
   id: string;
@@ -56,9 +57,21 @@ export interface Patent {
   family: { publicationNumber: string; country: string }[];
   source: "mock" | "epo";
 }
+export interface PatentClaim {
+  number: number;
+  text: string;
+  independent: boolean;
+}
+export interface PatentClaims {
+  /** Language of the claim text as published, e.g. "EN", "FR", "DE". */
+  language: string;
+  claims: PatentClaim[];
+}
 export interface PatentSearch {
   q?: string;
   anyTerms?: readonly string[];
+  /** Publishing offices to keep, e.g. ["US", "EP"]; all offices when empty. */
+  offices?: readonly string[];
   pageSize?: number;
   cpc?: string;
   ipc?: string;

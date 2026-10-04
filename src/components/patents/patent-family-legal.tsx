@@ -4,6 +4,8 @@ import { messages } from "@/lib/i18n/messages";
 import { patentProvider } from "@/lib/patents";
 import { resolvePatentLegalStatus } from "@/lib/patents/legal-status/resolve";
 import { safeText } from "@/lib/ai/safety";
+import { formatShortDate } from "@/lib/patents/format";
+import { PatentStatusPill } from "@/components/patents/patent-status-pill";
 
 export async function PatentFamilyLegal({
   patent,
@@ -42,16 +44,18 @@ export async function PatentFamilyLegal({
       <section className="panel mt-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="!mb-0">{m.events}</h2>
-          <span className={`badge status-${status.toLowerCase()}`}>
-            {m.statuses[status]}
-          </span>
+          <PatentStatusPill
+            patent={{ ...patent, legalStatus: status, legalEvents: events }}
+            locale={locale}
+          />
         </div>
         {events.length ? (
           <ol className="timeline">
             {events.map((event) => (
               <li key={event.id} className="timeline-item">
                 <div className="text-sm muted">
-                  {event.date} · {event.jurisdiction}
+                  {formatShortDate(event.date, locale) ?? event.date} ·{" "}
+                  {event.jurisdiction}
                 </div>
                 <strong>{m.eventKinds[event.kind]}</strong>
                 <p className="text-sm muted">

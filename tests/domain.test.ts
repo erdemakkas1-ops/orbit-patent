@@ -4,7 +4,11 @@ import sharp from "sharp";
 import { MockPatentProvider } from "../src/lib/patents/providers/mock";
 import { MockAiProvider } from "../src/lib/ai/mock";
 import { resolvePatentLegalStatus } from "../src/lib/patents/legal-status/resolve";
-import { LegalStatus, type LegalEvent } from "../src/types/patent";
+import {
+  LegalStatus,
+  type LegalEvent,
+  type Patent,
+} from "../src/types/patent";
 import { searchSchema } from "../src/lib/patents/search-schema";
 import {
   categorizePatent,
@@ -13,6 +17,7 @@ import {
   yearRanges,
 } from "../src/lib/patents/discovery";
 import { mockPatents } from "../src/data/mock-patents";
+import { parseEpoClaims } from "../src/lib/patents/providers/epo/claims";
 import {
   formatPublicationNumber,
   readableTitle,
@@ -809,10 +814,10 @@ test("EPO discovery maps categories and years to one cached OPS search", async (
   assert.deepEqual(hydratedIds, ["EP1234567A1", "WO2024000001A1"]);
   assert.equal(requests.length, 1);
   assert.equal(requests[0].path, "published-data/search");
-  assert.equal(requests[0].range, "7-12");
+  assert.equal(requests[0].range, "13-24"); // page 2 of a 2x candidate pool
   assert.equal(
     requests[0].params?.q,
-    '(ta="robot" OR ta="gripper" OR ta="manipulator") AND publicationdate within "20100101,20191231"',
+    '(ta="robot" OR ta="gripper" OR ta="manipulator") AND (pn=US OR pn=EP OR pn=GB) AND publicationdate within "20100101,20191231"',
   );
   await assert.rejects(
     provider.discoverPatents({
@@ -1635,7 +1640,11 @@ test("editorial patent presentation keeps drawing viewer and home steps accessib
   assert.match(home, /howItWorks/);
   assert.match(home, /howDiscover/);
   assert.match(discover, /specimen-source/);
-  assert.match(discover, /specimen-status/);
+  assert.match(discover, /<PatentStatusPill/);
+  assert.match(
+    readFileSync("src/components/patents/patent-status-pill.tsx", "utf8"),
+    /specimen-status/,
+  );
 });
 
 test("homepage featured patents reuse localization and card thumbnails", () => {
@@ -1717,4 +1726,90 @@ test("Turkish project intents rank English patents through the English queries",
   );
   assert.ok(feeder.score > cabin.score);
   assert.equal(feeder.contributions.keyword, 0.5); // (2/3 + 1/3) / 2
+});
+
+test("a fee lapse survives later assignments and reminders", () => {
+  // Order of the US 7,182,230 B2 INPADOC records: reminder, lapse, status
+  // note, fee lapse, then an assignment nine years later.
+  const records: [string, string, string][] = [
+    ["2005-01-06", "AS", "ASSIGNMENT"],
+    ["2010-10-04", "REMI", "MAINTENANCE FEE REMINDER MAILED"],
+    ["2011-02-27", "LAPS", "LAPSE FOR FAILURE TO PAY MAINTENANCE FEES"],
+    ["2011-03-28", "STCH", "INFORMATION ON STATUS: PATENT DISCONTINUATION"],
+    ["2011-04-19", "FP", "LAPSED DUE TO FAILURE TO PAY MAINTENANCE FEE"],
+    ["2020-08-05", "AS", "ASSIGNMENT"],
+  ];
+  const events = records.map(([date, code, desc]) => ({
+    ...event(mapEpoLegalEvent(code, desc), date, "US"),
+    id: code + date,
+  }));
+  assert.equal(events[0].kind, "ADMINISTRATIVE");
+  assert.equal(events[1].kind, "ADMINISTRATIVE");
+  assert.equal(resolvePatentLegalStatus(events, "US"), LegalStatus.LAPSED);
+  assert.equal(
+    mapEpoLegalEvent("M1551", "PAYMENT OF MAINTENANCE FEE, 4TH YEAR"),
+    "RENEWED",
+  );
+  assert.equal(
+    mapEpoLegalEvent("PMFG", "PETITION RELATED TO MAINTENANCE FEES GRANTED"),
+    "REINSTATED",
+  );
+  // An event we cannot classify still keeps the status unknown.
+  assert.equal(
+    resolvePatentLegalStatus(
+      [...events, event("UNMAPPED", "2021-01-01", "US")],
+      "US",
+    ),
+    LegalStatus.UNKNOWN,
+  );
+});
+
+test("EPO claims split on the expected claim numbers and flag independents", () => {
+  const xml = `<ftxt:fulltext-document><claims lang="EN">
+    <claim><claim-text>What is claimed is: 1. 1. A clamp comprising a jaw movable between 1 and 2. positions; and a lever.</claim-text>
+    <claim-text>2. The clamp of claim 1, wherein the lever is plastic.</claim-text>
+    <claim-text>3. A method of clamping, comprising pressing a lever &amp; locking.</claim-text></claim>
+  </claims></ftxt:fulltext-document>`;
+  const parsed = parseEpoClaims(xml);
+  assert.equal(parsed?.language, "EN");
+  assert.deepEqual(
+    parsed?.claims.map((claim) => [claim.number, claim.independent]),
+    [
+      [1, true],
+      [2, false],
+      [3, true],
+    ],
+  );
+  // "between 1 and 2." inside claim 1 does not start a claim; duplicate number stripped
+  assert.equal(
+    parsed?.claims[0].text,
+    "A clamp comprising a jaw movable between 1 and 2. positions; and a lever.",
+  );
+  assert.match(parsed?.claims[2].text ?? "", /lever & locking/);
+  assert.equal(parseEpoClaims("<fault />"), null);
+});
+
+test("hydration shows one card per invention across sibling publications", async () => {
+  const base = mockPatents[0];
+  const sibling = (id: string, title: string) => ({
+    ...base,
+    id,
+    publicationNumber: id,
+    title: { tr: "", en: title },
+    applicants: ["ACME CORP"],
+  });
+  const records: Record<string, Patent> = {
+    FR1A1: sibling("FR1A1", "Refrigerant circuit for vehicle air-conditioning"),
+    FR2A1: sibling("FR2A1", "REFRIGERANT CIRCUIT FOR VEHICLE AIR CONDITIONING"),
+    FR3A1: sibling("FR3A1", "Planetary gear train"),
+  };
+  const hydrated = await hydratePatentReferences(
+    Object.values(records),
+    async (id) => records[id],
+    3,
+  );
+  assert.deepEqual(
+    hydrated.map((patent) => patent.id),
+    ["FR1A1", "FR3A1"],
+  );
 });

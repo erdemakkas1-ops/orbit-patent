@@ -1,6 +1,10 @@
 import type { AiProvider } from "./provider";
-import type { Locale, Patent } from "@/types/patent";
-import type { BuildEstimate } from "@/types/ai";
+import type { Locale, Patent, PatentClaim } from "@/types/patent";
+import type {
+  BuildEstimate,
+  DevelopmentDirection,
+  DevelopmentHypothesis,
+} from "@/types/ai";
 import { topics, aiCopy } from "@/data/mock-ai";
 import { fold } from "@/lib/patents/search-schema";
 import { mockBuild } from "@/data/mock-builds";
@@ -90,6 +94,53 @@ export class MockAiProvider implements AiProvider {
       difficultyImpact: index === 2 ? 1 : 0.5,
       estimatedCostImpact: [450, 700, 350][index],
     }));
+  }
+  async developPatent(
+    p: Patent,
+    direction: DevelopmentDirection,
+    problem: string | null,
+    l: Locale,
+  ): Promise<DevelopmentHypothesis[]> {
+    const title = p.title[l] || p.title.en;
+    const tr = l === "tr";
+    const angle = {
+      cheaper: tr
+        ? ["Parça sayısını azalt", "parça sayısını ve montaj adımlarını azaltan"]
+        : ["Cut the part count", "that reduces parts and assembly steps"],
+      smarter: tr
+        ? ["Sensörle geri bildirim ekle", "durumu ölçüp kendini ayarlayan"]
+        : ["Add sensor feedback", "that measures its state and adjusts itself"],
+      "new-use": tr
+        ? ["Yeni bir kullanıcıya taşı", "farklı bir kullanıcı grubuna uyarlanan"]
+        : ["Move it to a new user", "adapted to a different group of users"],
+    }[direction];
+    return [
+      {
+        title: angle[0],
+        idea: tr
+          ? `${title} fikrini ${angle[1]} bir prototipe dönüştür${problem ? `; hedef: ${problem}` : ""}.`
+          : `Turn ${title} into a prototype ${angle[1]}${problem ? `; goal: ${problem}` : ""}.`,
+        basis: tr
+          ? "Patent özeti mekanizmanın temel parçalarını tanımlıyor (örnek veri)."
+          : "The abstract describes the core parts of the mechanism (sample data).",
+        uncertainty: tr
+          ? "Gerçek yükler ve malzeme toleransları kaynakta yok."
+          : "Real loads and material tolerances are not in the source.",
+        test: tr
+          ? "İki prototip yap, aynı görevde ölç; yeni sürüm hedef ölçütte daha iyi değilse hipotez yanlıştır."
+          : "Build two prototypes and measure them on the same task; if the new one is not better on the target metric, the hypothesis is wrong.",
+      },
+    ];
+  }
+  async summarizeClaims(_p: Patent, claims: PatentClaim[], l: Locale) {
+    const first = claims[0];
+    return {
+      summary:
+        l === "tr"
+          ? `İstem ${first?.number ?? 1} şu yapıyı korumak istiyor (örnek veri): ${first?.text.slice(0, 160) ?? ""}`
+          : `Claim ${first?.number ?? 1} seeks to protect (sample data): ${first?.text.slice(0, 160) ?? ""}`,
+      claimNumbers: claims.slice(0, 3).map((claim) => claim.number),
+    };
   }
   async translatePatentTexts(): Promise<never> {
     throw new Error("AI_TRANSLATION_UNAVAILABLE");
