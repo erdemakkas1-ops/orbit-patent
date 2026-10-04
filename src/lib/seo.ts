@@ -5,12 +5,12 @@ export const seoCopy = {
   tr: {
     homeTitle: "ORBIT – Patent Keşif ve AI Analiz Platformu",
     homeDescription:
-      "Patentleri keşfedin, arayın ve yapmak istediğiniz projeye uygun teknolojileri AI desteğiyle bulun.",
+      "Süresi dolmuş patentleri özgün çizimleri ve sicil durumuyla keşfet, korunan mekanizmayı anla, kendi versiyonunu test edilebilir hipotezlerle geliştir.",
   },
   en: {
     homeTitle: "ORBIT – Patent Discovery and AI Analysis Platform",
     homeDescription:
-      "Discover and search patents, and find technologies suited to your project with AI assistance.",
+      "Explore expired patents with their original drawings and register status, understand the protected mechanism, and develop your own version with testable hypotheses.",
   },
 } as const;
 
@@ -61,5 +61,7 @@ export function buildMetadata(
       url: path,
       siteName: "ORBIT",
     },
+    // The image comes from app/[locale]/opengraph-image.tsx.
+    twitter: { card: "summary_large_image", title, description },
   };
 }

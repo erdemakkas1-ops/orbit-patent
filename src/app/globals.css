@@ -1216,6 +1216,8 @@ main:has(.pending-mark[data-pending="true"]) .discover-results {
 /* Inline text links stay comfortably tappable on touch screens. */
 @media (pointer: coarse) {
   .card-action,
+  .step-link,
+  .blueprint-link,
   .footer-links a {
     display: inline-flex;
     min-height: 2.75rem;
