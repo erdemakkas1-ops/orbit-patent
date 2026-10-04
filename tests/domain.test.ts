@@ -82,7 +82,10 @@ import {
   CARD_DRAWING_VERSION,
   cardDrawingUrl,
 } from "../src/lib/patents/drawing-url";
-import { admitAiRequest } from "../src/lib/rate-limit";
+import {
+  admitAiRequest,
+  admitSharedAiRequest,
+} from "../src/lib/rate-limit";
 import { normalizeProjectText } from "../src/lib/ai/input";
 import {
   clearTranslationCacheForTests,
@@ -587,7 +590,7 @@ test("card drawing trim keeps a narrow figure label at the top", async () => {
       {
         input: { create: { width: 60, height: 16, channels: 3, background: "#000000" } },
         left: 40,
-        top: 25,
+        top: 150, // a "FIG. 1" label sits just above its drawing
       },
       {
         input: { create: { width: 220, height: 300, channels: 3, background: "#000000" } },
@@ -599,7 +602,7 @@ test("card drawing trim keeps a narrow figure label at the top", async () => {
     .toBuffer();
   const card = await trimPatentDrawingForCard(original);
   const metadata = await sharp(card).metadata();
-  assert.equal(metadata.height, 471); // label at 25 through the drawing at 480, + borders
+  assert.equal(metadata.height, 346); // label at 150 through the drawing at 480, + borders
 });
 test("card drawing trim ignores a scanner line along the page edge", async () => {
   const original = await sharp({
@@ -623,6 +626,36 @@ test("card drawing trim ignores a scanner line along the page edge", async () =>
   const metadata = await sharp(card).metadata();
   assert.equal(metadata.width, 416);
   assert.equal(metadata.height, 516);
+});
+test("card drawing trim drops a page number and running number far from the drawing", async () => {
+  // EP drawing sheets: small publication number on top, page number at the
+  // bottom, the drawing in between; trimming must not stretch to both marks.
+  const original = await sharp({
+    create: { width: 800, height: 1100, channels: 3, background: "#ffffff" },
+  })
+    .composite([
+      {
+        input: { create: { width: 90, height: 12, channels: 3, background: "#000000" } },
+        left: 355,
+        top: 40,
+      },
+      {
+        input: { create: { width: 300, height: 260, channels: 3, background: "#000000" } },
+        left: 250,
+        top: 420,
+      },
+      {
+        input: { create: { width: 8, height: 8, channels: 3, background: "#000000" } },
+        left: 396,
+        top: 1040,
+      },
+    ])
+    .png()
+    .toBuffer();
+  const card = await trimPatentDrawingForCard(original);
+  const metadata = await sharp(card).metadata();
+  assert.equal(metadata.width, 316);
+  assert.equal(metadata.height, 276);
 });
 test("card drawing render fits the card box as lossless PNG", async () => {
   const page = await sharp({
@@ -701,10 +734,10 @@ test("card and full drawing variants share one upstream page and cache separatel
   assert.equal(binaryCalls, 1);
 });
 test("card drawing URLs use a stable cache version without changing static assets", () => {
-  assert.equal(CARD_DRAWING_VERSION, "5");
+  assert.equal(CARD_DRAWING_VERSION, "6");
   assert.equal(
     cardDrawingUrl("/api/patents/EP123A1/drawings/1"),
-    "/api/patents/EP123A1/drawings/1?variant=card&v=5",
+    "/api/patents/EP123A1/drawings/1?variant=card&v=6",
   );
   assert.equal(cardDrawingUrl("/drawings/mock.svg"), "/drawings/mock.svg");
 });
@@ -1522,7 +1555,7 @@ test("hero copy is localized with the ORBIT design direction", async () => {
   );
   assert.equal(
     messages.tr.intro,
-    "Patentleri keşfedin, arayın veya yapmak istediğiniz projeyi ORBIT’e anlatın.",
+    "Süresi dolmuş patentleri özgün çizimleri ve sicil durumuyla keşfet, korunan mekanizmayı anla, kendi versiyonunu test edilebilir hipotezlerle geliştir.",
   );
 });
 
@@ -1812,4 +1845,14 @@ test("hydration shows one card per invention across sibling publications", async
     hydrated.map((patent) => patent.id),
     ["FR1A1", "FR3A1"],
   );
+});
+
+test("shared AI rate limit stays open in development and without a shared store", async () => {
+  const request = new Request("http://orbit.test/api/ai", {
+    headers: { "x-forwarded-for": "198.51.100.7" },
+  });
+  assert.equal(await admitSharedAiRequest(request, "development"), true);
+  // No KV/Upstash credentials in tests: the per-instance guard is all that applies.
+  for (let i = 0; i < 50; i++)
+    assert.equal(await admitSharedAiRequest(request, "production"), true);
 });

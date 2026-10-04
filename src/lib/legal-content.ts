@@ -88,7 +88,7 @@ export const legalContent: Record<Locale, Record<LegalPage, Page>> = {
           paragraphs: [
             "Hesap gerekmez; ad, e-posta veya ödeme bilgisi toplanmaz. Çerez ya da reklam izleyicisi kullanılmaz.",
             "AI proje aramasına yazdığın proje açıklaması ve Geliştir bölümüne yazdığın problem, yanıt üretmek için yapay zekâ sağlayıcısına (OpenAI) iletilir. Bu metinler ortak kalıcı önbelleğe kaydedilmez ve başka kullanıcıların sonuçlarında görünmez.",
-            "Kötüye kullanımı önlemek için IP adresi, hız sınırı amacıyla kısa süreliğine bellekte tutulur. Barındırma sağlayıcısı (Vercel) standart erişim kayıtları tutabilir.",
+            "Kötüye kullanımı önlemek için IP adresi hız sınırı amacıyla kullanılır: sunucu belleğinde kısa süreliğine, ortak önbellekte ise yalnızca geri çevrilemez özeti (hash) en fazla iki dakika tutulur. Barındırma sağlayıcısı (Vercel) standart erişim kayıtları tutabilir.",
           ],
         },
         {
@@ -174,7 +174,7 @@ export const legalContent: Record<Locale, Record<LegalPage, Page>> = {
           paragraphs: [
             "No account is needed; no name, email or payment details are collected. No cookies or advertising trackers are used.",
             "The project you describe in AI project search and the problem you write in Develop are sent to the AI provider (OpenAI) to produce an answer. They are never stored in the shared durable cache and never appear in anyone else's results.",
-            "To prevent abuse, IP addresses are held briefly in memory for rate limiting. The hosting provider (Vercel) may keep standard access logs.",
+            "To prevent abuse, IP addresses are used for rate limiting: briefly in server memory, and in the shared cache only as a one-way hash kept for at most two minutes. The hosting provider (Vercel) may keep standard access logs.",
           ],
         },
         {

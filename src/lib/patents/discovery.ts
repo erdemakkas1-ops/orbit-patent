@@ -82,7 +82,8 @@ export function featuredScore(patent: Patent) {
   return (
     (patent.drawings.length ? 30 : 0) +
     (patent.abstract.tr || patent.abstract.en ? 20 : 0) +
-    (patent.legalStatus === LegalStatus.ACTIVE ? 25 : 0) +
+    // A register-backed status beats "no data" on curated surfaces.
+    (patent.legalStatus !== LegalStatus.UNKNOWN ? 25 : 0) +
     Math.max(0, Math.min(20, year - 2000))
   );
 }

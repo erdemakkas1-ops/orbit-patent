@@ -132,6 +132,60 @@ async function eraseScanEdgeLines(body: Buffer) {
   return sharp(data, { raw: { width, height, channels: 1 } }).png().toBuffer();
 }
 
+/**
+ * Drops page furniture far from the drawing: a publication number printed at
+ * the top, a page number at the bottom. Ink rows are grouped into blocks
+ * (gaps under 8% of the page join), the block with the most ink is the
+ * drawing, and blocks with under a tenth of its ink are cut away. A "FIG. 1"
+ * label sits close to its drawing and stays in the same block.
+ */
+async function cropToMainContent(body: Buffer) {
+  const sample = await sharp(body)
+    .resize({ width: 510, withoutEnlargement: true })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height } = sample.info;
+  const ink = Array.from({ length: height }, (_, y) => {
+    let count = 0;
+    for (let x = 0; x < width; x += 1)
+      if (sample.data[y * width + x] < 160) count += 1;
+    return count;
+  });
+  const joinGap = Math.max(4, Math.round(height * 0.08));
+  const blocks: { top: number; bottom: number; ink: number }[] = [];
+  let gap = Infinity;
+  for (let y = 0; y < height; y += 1) {
+    if (!ink[y]) {
+      gap += 1;
+      continue;
+    }
+    const last = blocks.at(-1);
+    if (last && gap < joinGap) {
+      last.bottom = y;
+      last.ink += ink[y];
+    } else blocks.push({ top: y, bottom: y, ink: ink[y] });
+    gap = 0;
+  }
+  if (blocks.length < 2) return body;
+  const main = Math.max(...blocks.map((block) => block.ink));
+  const kept = blocks.filter((block) => block.ink >= main * 0.1);
+  const top = Math.min(...kept.map((block) => block.top));
+  const bottom = Math.max(...kept.map((block) => block.bottom));
+  if (top === blocks[0].top && bottom === blocks.at(-1)!.bottom) return body;
+  const { width: sourceWidth = 0, height: sourceHeight = 0 } =
+    await sharp(body).metadata();
+  if (!sourceWidth || !sourceHeight) return body;
+  const scale = sourceHeight / height;
+  const from = Math.max(0, Math.floor((top - 2) * scale));
+  const to = Math.min(sourceHeight, Math.ceil((bottom + 3) * scale));
+  if (to - from < sourceHeight * 0.05) return body;
+  return sharp(body)
+    .extract({ left: 0, top: from, width: sourceWidth, height: to - from })
+    .png()
+    .toBuffer();
+}
+
 /** Card plate at 2x of its largest CSS size (~380x285). */
 export const CARD_RENDER_BOX = { width: 760, height: 570 } as const;
 
@@ -182,8 +236,8 @@ export async function trimPatentDrawingForCard(body: Uint8Array) {
       .flatten({ background: { r: 255, g: 255, b: 255 } })
       .png()
       .toBuffer();
-    const contentPage = await removeStandardPatentHeader(
-      await eraseScanEdgeLines(normalized),
+    const contentPage = await cropToMainContent(
+      await removeStandardPatentHeader(await eraseScanEdgeLines(normalized)),
     );
     const trimmed = await sharp(contentPage)
       .trim({

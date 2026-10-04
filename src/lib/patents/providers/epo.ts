@@ -20,7 +20,11 @@ import {
   toRouteIdentifier,
 } from "./epo/identifier";
 import { EpoImageService } from "./epo/images";
-import { discoverySearchTerms, featuredScore } from "@/lib/patents/discovery";
+import {
+  discoverySearchTerms,
+  featuredScore,
+  yearRanges,
+} from "@/lib/patents/discovery";
 import { parseEpoFamilyLegal } from "./epo/family";
 import { parseEpoClaims } from "./epo/claims";
 import { resolvePatentLegalStatus } from "@/lib/patents/legal-status/resolve";
@@ -395,9 +399,12 @@ export class EpoOpsPatentProvider implements PatentProvider {
     const cached = this.featuredCache;
     if (cached && cached.expires > Date.now())
       return cached.value.slice(0, safeLimit);
-    const candidateLimit = Math.min(6, Math.max(safeLimit, safeLimit * 2));
+    // A wider pool so cards with a known register status can lead.
+    const candidateLimit = Math.min(12, Math.max(safeLimit, safeLimit * 4));
     const result = await this.searchPatents({
       offices: DISCOVERY_OFFICES,
+      // The homepage promise: ideas whose protection has ended.
+      yearRange: yearRanges["likely-expired"],
       anyTerms: [
         ...discoverySearchTerms.robotics,
         ...discoverySearchTerms.sensors,

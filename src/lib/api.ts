@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { publicErrorCode } from "./errors";
 import { normalizeProjectText } from "./ai/input";
 import { developmentDirections } from "@/types/ai";
-export { admitAiRequest } from "./rate-limit";
+export { admitAiRequest, admitSharedAiRequest } from "./rate-limit";
 export const projectRequest = z.object({
   text: z.string().trim().min(10).max(3000).transform(normalizeProjectText),
   locale: z.enum(["tr", "en"]).default("tr"),

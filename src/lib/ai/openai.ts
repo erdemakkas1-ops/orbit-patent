@@ -16,7 +16,7 @@ import type { DevelopmentDirection } from "@/types/ai";
 import type { PatentTranslationInput } from "@/types/ai";
 import type { Patent, Locale, PatentClaim } from "@/types/patent";
 import type { AiProvider } from "./provider";
-import { reserveModelCall } from "./budget";
+import { reserveDailyModelCall, reserveModelCall } from "./budget";
 import { calculateCost, calculateDifficulty } from "./engines";
 import { serverEnv } from "@/lib/env";
 import { AiCreditCircuit, safeAiErrorDetails } from "./error-log";
@@ -55,6 +55,7 @@ export class OpenAiProvider implements AiProvider {
     const started = Date.now();
     try {
       reserveModelCall();
+      await reserveDailyModelCall();
       const result = await this.client.responses.parse({
         model: this.model,
         store: false,

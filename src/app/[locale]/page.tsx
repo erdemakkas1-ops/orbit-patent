@@ -106,15 +106,16 @@ export default async function Home({
       </section>
       <section className="mt-16">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="max-w-2xl">
             <p className="eyebrow">{m.discover}</p>
-            <h2 className="!mb-0">{m.featuredPatents}</h2>
+            <h2 className="!mb-2">{m.featuredExpiredTitle}</h2>
+            <p className="muted !mb-0 text-sm">{m.featuredExpiredIntro}</p>
           </div>
           <Link
             className="card-action text-sm font-semibold"
-            href={`/${locale}/discover`}
+            href={`/${locale}/discover?year=likely-expired`}
           >
-            {m.exploreAll}
+            {m.featuredExpiredAll}
           </Link>
         </div>
         <Suspense
@@ -139,6 +140,20 @@ export default async function Home({
             </Link>
           ))}
         </div>
+      </section>
+      <section className="what-it-is-not mt-16" aria-labelledby="not-title">
+        <h2 id="not-title">{m.whatItIsNot}</h2>
+        <ul>
+          {m.whatItIsNotItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <Link
+          className="card-action text-sm font-semibold"
+          href={`/${locale}/legal/sources`}
+        >
+          {m.legalLinks.sources}
+        </Link>
       </section>
     </section>
   );

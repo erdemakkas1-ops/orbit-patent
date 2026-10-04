@@ -3,13 +3,14 @@ import { currentAiSource, developPatent } from "@/lib/ai";
 import { patentProvider } from "@/lib/patents";
 import {
   admitAiRequest,
+  admitSharedAiRequest,
   apiError,
   developRequest,
   readLimitedJson,
 } from "@/lib/api";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
-  if (!admitAiRequest(request))
+  if (!admitAiRequest(request) || !(await admitSharedAiRequest(request)))
     return NextResponse.json(
       { error: "RATE_LIMITED" },
       { status: 429, headers: { "Retry-After": "60" } },

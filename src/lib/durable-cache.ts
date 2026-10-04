@@ -28,6 +28,36 @@ async function command(args: (string | number)[]): Promise<unknown> {
   return ((await response.json()) as { result?: unknown }).result;
 }
 
+/**
+ * Atomically counts a hit. Callers put the time window in the key (minute,
+ * day), so the expiry only cleans up and plain EXPIRE is enough. Returns the
+ * new count, or undefined when the shared store is unavailable (callers then
+ * fall back to their per-instance limits).
+ */
+export async function durableIncrement(
+  key: string,
+  ttlSeconds: number,
+): Promise<number | undefined> {
+  if (!durableCacheEnabled) return undefined;
+  try {
+    const response = await fetch(`${url}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify([
+        ["INCR", PREFIX + key],
+        ["EXPIRE", PREFIX + key, ttlSeconds],
+      ]),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!response.ok) return undefined;
+    const [count] = (await response.json()) as { result?: unknown }[];
+    return typeof count?.result === "number" ? count.result : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function durableGet<T>(key: string): Promise<T | undefined> {
   if (!durableCacheEnabled) return undefined;
   try {

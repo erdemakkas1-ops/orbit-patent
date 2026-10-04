@@ -11,7 +11,17 @@ export const messages = {
     aiIntro:
       "Projenizi normal şekilde anlatın. ORBIT ilgili teknolojileri ve patentleri bulsun.",
     intro:
-      "Patentleri keşfedin, arayın veya yapmak istediğiniz projeyi ORBIT’e anlatın.",
+      "Süresi dolmuş patentleri özgün çizimleri ve sicil durumuyla keşfet, korunan mekanizmayı anla, kendi versiyonunu test edilebilir hipotezlerle geliştir.",
+    featuredExpiredTitle: "Süresi dolmuş patentlerden seçmeler",
+    featuredExpiredIntro:
+      "Kartlardaki durum EPO sicilinden gelir; sicilde kayıt yoksa tahmini olduğu ayrıca yazar.",
+    featuredExpiredAll: "Süresi dolmuş tüm patentler",
+    whatItIsNot: "Ne değildir?",
+    whatItIsNotItems: [
+      "Hukuki görüş ya da serbestçe kullanım (FTO) değerlendirmesi değildir.",
+      "Bir patentin sona ermesi, üründeki başka patent, tasarım veya markaların da bittiği anlamına gelmez.",
+      "AI geliştirme önerileri hipotezdir; test edilmeden olgu sayılmamalıdır.",
+    ],
     publicPlatform: "Açık erişimli patent keşif platformu",
     discoverIntro:
       "Teknoloji alanlarına, yıllara ve patent durumlarına göre fikirleri keşfedin.",
@@ -64,13 +74,13 @@ export const messages = {
     howItWorks: "Nasıl çalışır?",
     howDiscover: "Keşfet",
     howDiscoverText:
-      "Patentleri kategori, teknoloji ve durumlarına göre inceleyin.",
+      "Süresi dolmuş patentleri, sicilin bildirdiği durum ve yılıyla incele.",
     howUnderstand: "Anla",
     howUnderstandText:
-      "Patentlerin işlevini ve teknik yapısını sade biçimde görün.",
+      "Ne işe yaradığını ve istemlerin hangi mekanizmayı koruduğunu sade dille gör.",
     howDevelop: "Geliştir",
     howDevelopText:
-      "AI destekli maliyet, malzeme ve modernizasyon analiziyle fikri ileri taşıyın.",
+      "Bir yön seç; AI dayanağı ve testi belli hipotezler önersin, maliyet ve malzemeyi çıkarsın.",
     mock: "Patent verisi örnektir.",
     cardSample: "Örnek",
     claimScopeTitle: "Hangi mekanizma korunmak istenmiş?",
@@ -312,14 +322,25 @@ export const messages = {
     howItWorks: "How it works",
     howDiscover: "Discover",
     howDiscoverText:
-      "Explore patents by category, technology and legal status.",
+      "Explore expired patents with the status and year the register reports.",
     howUnderstand: "Understand",
     howUnderstandText:
-      "See what a patent does and how its technical idea works.",
+      "See what it does and which mechanism its claims protect, in plain language.",
     howDevelop: "Develop",
     howDevelopText:
-      "Move the idea forward with AI-assisted cost, materials and modernization analysis.",
-    intro: "Discover and search patents, or tell ORBIT what you want to build.",
+      "Pick a direction; AI suggests hypotheses with a basis and a test, plus cost and materials.",
+    intro:
+      "Explore expired patents with their original drawings and register status, understand the protected mechanism, and develop your own version with testable hypotheses.",
+    featuredExpiredTitle: "Picks from expired patents",
+    featuredExpiredIntro:
+      "Card status comes from the EPO register; where the register is silent, the card says it is an estimate.",
+    featuredExpiredAll: "All expired patents",
+    whatItIsNot: "What it is not",
+    whatItIsNotItems: [
+      "It is not legal advice or a freedom-to-operate (FTO) assessment.",
+      "A patent ending does not mean other patents, designs or trademarks on the product have ended.",
+      "AI development ideas are hypotheses; do not treat them as facts until tested.",
+    ],
     publicPlatform: "Open-access patent discovery platform",
     discoverIntro: "Explore ideas by technology field, year and patent status.",
     featuredPatents: "Featured Patents",
