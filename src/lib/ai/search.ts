@@ -3,7 +3,7 @@ import { analyzeProjectIntent, currentAiSource } from "./index";
 import { patentProvider } from "@/lib/patents";
 import { hydratePatentReferences } from "@/lib/patents/providers/epo";
 import { calculateRelevance } from "./engines";
-import { localizePatents } from "./translation";
+import { localizePatentCards } from "./translation";
 import type { Locale, Patent } from "@/types/patent";
 const MAX_LIVE_CANDIDATES = 12;
 /** Bounded query fan-out and deterministic ranking; never invents patent records. */
@@ -52,7 +52,7 @@ export async function searchProject(text: string, locale: Locale) {
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 9);
-  const localized = await localizePatents(
+  const localized = await localizePatentCards(
     results.map((r) => r.patent),
     locale,
   );

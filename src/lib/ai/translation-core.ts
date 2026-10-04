@@ -13,22 +13,44 @@ type TranslationProvider = Pick<
   "source" | "model" | "translatePatentTexts"
 >;
 
-const sourceText = (patent: Patent): PatentTextTranslation => ({
-  title: patent.title.en || patent.title.tr || patent.publicationNumber,
-  abstract: patent.abstract.en || patent.abstract.tr,
-  description:
-    patent.description.en ||
-    patent.description.tr ||
-    patent.abstract.en ||
-    patent.abstract.tr,
-});
+/**
+ * "full" feeds the detail page. "card" is for lists, which show a title and
+ * two lines of abstract: no description and a short abstract cut the model's
+ * output several-fold, which is most of a cold list page's wait.
+ */
+export type TranslationMode = "full" | "card";
+const CARD_ABSTRACT_CHARS = 600;
+
+const sourceText = (
+  patent: Patent,
+  mode: TranslationMode = "full",
+): PatentTextTranslation => {
+  const abstract = patent.abstract.en || patent.abstract.tr;
+  const title = patent.title.en || patent.title.tr || patent.publicationNumber;
+  if (mode === "card")
+    return {
+      title,
+      abstract: abstract.slice(0, CARD_ABSTRACT_CHARS),
+      description: "",
+    };
+  return {
+    title,
+    abstract,
+    description:
+      patent.description.en ||
+      patent.description.tr ||
+      patent.abstract.en ||
+      patent.abstract.tr,
+  };
+};
 
 export function patentTranslationCacheKey(
   patent: Patent,
   locale: Locale,
   provider: Pick<AiProvider, "source" | "model">,
+  mode: TranslationMode = "full",
 ) {
-  const source = sourceText(patent);
+  const source = sourceText(patent, mode);
   const sourceHash = createHash("sha256")
     .update(JSON.stringify(source))
     .digest("hex");
@@ -38,14 +60,16 @@ export function patentTranslationCacheKey(
     target: locale,
     provider: provider.source,
     model: provider.model,
+    // Full keys stay as they were, so stored full translations remain valid.
+    ...(mode === "card" ? { mode } : {}),
   });
 }
 
-function needsTurkishTranslation(patent: Patent) {
+function needsTurkishTranslation(patent: Patent, mode: TranslationMode) {
   return !(
     patent.title.tr.trim() &&
     patent.abstract.tr.trim() &&
-    patent.description.tr.trim()
+    (mode === "card" || patent.description.tr.trim())
   );
 }
 
@@ -53,6 +77,7 @@ export async function localizePatentsWithProvider(
   patents: Patent[],
   locale: Locale,
   provider: TranslationProvider,
+  mode: TranslationMode = "full",
 ): Promise<Patent[]> {
   if (locale !== "tr" || provider.source !== "openai" || !patents.length)
     return patents;
@@ -65,9 +90,9 @@ export async function localizePatentsWithProvider(
   }[] = [];
   const lookups = await Promise.all(
     [...patents.entries()]
-      .filter(([, patent]) => needsTurkishTranslation(patent))
+      .filter(([, patent]) => needsTurkishTranslation(patent, mode))
       .map(async ([index, patent]) => {
-        const key = patentTranslationCacheKey(patent, locale, provider);
+        const key = patentTranslationCacheKey(patent, locale, provider, mode);
         const hit =
           (await translationCache.get<PatentTextTranslation>(key)) ??
           (await durableGet<PatentTextTranslation>(key));
@@ -78,7 +103,7 @@ export async function localizePatentsWithProvider(
     if (hit) {
       resolved.set(index, hit);
       translationCache.set(key, ttl, hit);
-    } else misses.push({ index, key, source: sourceText(patent) });
+    } else misses.push({ index, key, source: sourceText(patent, mode) });
   }
 
   // Small parallel batches: one long batch can exceed the model timeout and

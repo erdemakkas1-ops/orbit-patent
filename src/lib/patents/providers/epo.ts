@@ -227,7 +227,8 @@ export class EpoOpsClient {
 }
 type CacheEntry<T> = { expires: number; value: T };
 
-export const EPO_DISCOVERY_CONCURRENCY = 3;
+// Parallel detail lookups while filling a page; well within OPS fair use.
+export const EPO_DISCOVERY_CONCURRENCY = 6;
 /**
  * Curated surfaces (discover, featured) stay on granting offices with English
  * bibliographic data, legal events and good drawings. WO is left out: an
@@ -350,12 +351,23 @@ export class EpoOpsPatentProvider implements PatentProvider {
     });
     return result;
   }
-  async discoverPatents(filters: DiscoveryFilters): Promise<SearchResult> {
+  async discoverPatents(
+    filters: DiscoveryFilters,
+    { refresh = false }: { refresh?: boolean } = {},
+  ): Promise<SearchResult> {
     if (filters.legalStatus)
       throw new Error("EPO_LEGAL_STATUS_FILTER_UNAVAILABLE");
     const key = stableCacheKey("epo-discovery", filters);
     const cached = this.discoveryCache.get(key);
-    if (cached && cached.expires > Date.now()) return cached.value;
+    if (!refresh && cached && cached.expires > Date.now()) return cached.value;
+    const stored = refresh ? undefined : await durableGet<SearchResult>(key);
+    if (stored) {
+      this.discoveryCache.set(key, {
+        value: stored,
+        expires: Date.now() + EPO_CONFIG.searchCacheMs,
+      });
+      return stored;
+    }
     const references = await this.searchPatents({
       offices: DISCOVERY_OFFICES,
       anyTerms: filters.category
@@ -391,6 +403,9 @@ export class EpoOpsPatentProvider implements PatentProvider {
       value: result,
       expires: Date.now() + EPO_CONFIG.searchCacheMs,
     });
+    // A full page is shared across instances; a short one may be a hiccup.
+    if (patents.length === filters.pageSize)
+      void durableSet(key, result, EPO_CONFIG.durableDiscoveryCacheMs);
     return result;
   }
   async getFeaturedPatents(limit = 6): Promise<Patent[]> {

@@ -1164,6 +1164,36 @@ a:focus-visible,
   margin-bottom: 0;
   font-size: 0.9375rem;
 }
+/* Navigation feedback for query-only links (FilterLink). */
+.pending-mark {
+  display: none;
+}
+.pending-mark[data-pending="true"] {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  border: 2px solid rgb(var(--primary-rgb) / 0.25);
+  border-top-color: var(--signal);
+  border-radius: 50%;
+  animation: pending-spin 0.7s linear infinite;
+}
+.discovery-filter:has(.pending-mark[data-pending="true"]) {
+  border-color: var(--signal);
+  background: var(--accent-soft);
+}
+.discover-results {
+  transition: opacity 160ms ease;
+}
+main:has(.pending-mark[data-pending="true"]) .discover-results {
+  opacity: 0.4;
+  pointer-events: none;
+}
+@keyframes pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .pager a {
   display: inline-flex;
   min-height: 2.5rem;

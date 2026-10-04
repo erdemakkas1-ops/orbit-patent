@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Locale, Patent } from "@/types/patent";
 import { messages } from "@/lib/i18n/messages";
 import { patentProvider } from "@/lib/patents";
-import { localizePatents } from "@/lib/ai/translation";
+import { localizePatentCards } from "@/lib/ai/translation";
 import { patentDisplay } from "@/lib/ai/safety";
 import { cardDrawingUrl } from "@/lib/patents/drawing-url";
 import {
@@ -44,7 +44,7 @@ export async function HeroBlueprint({ locale }: { locale: Locale }) {
     : [];
   const pick = picks.find((patent: Patent) => patent.drawings.length);
   if (!pick) return <HeroBlueprintFrame locale={locale} />;
-  const [patent] = await localizePatents([pick], locale);
+  const [patent] = await localizePatentCards([pick], locale);
   const display = patentDisplay(patent, locale, m.noData);
   const year = statusYear(patent);
   const status = likelyExpired(patent)

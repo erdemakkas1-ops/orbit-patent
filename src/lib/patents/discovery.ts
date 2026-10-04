@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   LegalStatus,
   type DiscoveryCategory,
+  type DiscoveryFilters,
   type Patent,
 } from "@/types/patent";
 import { fold } from "./search-schema";
@@ -58,6 +59,40 @@ export const discoveryQuerySchema = z.object({
   sort: z.enum(["featured", "newest", "oldest"]).default("featured"),
   page: z.coerce.number().int().min(1).max(1000).default(1),
 });
+
+export type DiscoveryQuery = z.infer<typeof discoveryQuerySchema>;
+
+/**
+ * The filters a discover URL resolves to. Shared by the page and the cache
+ * warmer so both produce the same cache key.
+ */
+export function discoveryFiltersFor(
+  query: Pick<DiscoveryQuery, "category" | "status" | "year" | "sort" | "page">,
+  live: boolean,
+): DiscoveryFilters {
+  return {
+    category: query.category,
+    legalStatus: live ? undefined : query.status,
+    yearRange: query.year ? yearRanges[query.year] : undefined,
+    sort: live ? "featured" : query.sort,
+    page: query.page,
+    pageSize: live ? 6 : 20,
+  };
+}
+
+/** Every first page reachable from the discover filters (54 today). */
+export function discoveryWarmList() {
+  const categories = [undefined, ...discoveryCategories];
+  const years = [undefined, ...(Object.keys(yearRanges) as YearRangeKey[])];
+  return categories.flatMap((category) =>
+    years.map((year) =>
+      discoveryFiltersFor(
+        { category, year, status: undefined, sort: "featured", page: 1 },
+        true,
+      ),
+    ),
+  );
+}
 
 const categoryRules: Array<[DiscoveryCategory, RegExp]> = [
   ["assistive", /\b(a61f|a61h)|baston|cane|assistive|yardimci|grip aid/],

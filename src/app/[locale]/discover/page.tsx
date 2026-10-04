@@ -1,18 +1,25 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { LegalStatus, type DiscoveryFilters } from "@/types/patent";
+import {
+  LegalStatus,
+  type DiscoveryFilters,
+  type Locale,
+} from "@/types/patent";
 import { isLocale, messages } from "@/lib/i18n/messages";
 import { patentProvider } from "@/lib/patents";
 import {
   discoveryCategories,
+  discoveryFiltersFor,
   discoveryQuerySchema,
-  yearRanges,
 } from "@/lib/patents/discovery";
 import { DiscoverCard } from "@/components/patents/discover-card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FilterLink } from "@/components/discover/filter-link";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
-import { localizePatents } from "@/lib/ai/translation";
+import { localizePatentCards } from "@/lib/ai/translation";
 
 export async function generateMetadata({
   params,
@@ -42,25 +49,8 @@ export default async function DiscoverPage({
   const parsed = discoveryQuerySchema.safeParse(await searchParams);
   const query = parsed.success ? parsed.data : discoveryQuerySchema.parse({});
   const liveDiscovery = patentProvider.source === "epo";
-  const legalStatus = liveDiscovery ? undefined : query.status;
-  const filters: DiscoveryFilters = {
-    category: query.category,
-    legalStatus,
-    yearRange: query.year ? yearRanges[query.year] : undefined,
-    sort: liveDiscovery ? "featured" : query.sort,
-    page: query.page,
-    pageSize: liveDiscovery ? 6 : 20,
-  };
-  const rawResult =
-    parsed.success && patentProvider.discoverPatents
-      ? await patentProvider.discoverPatents(filters).catch(() => null)
-      : null;
-  const result = rawResult
-    ? {
-        ...rawResult,
-        patents: await localizePatents(rawResult.patents, locale),
-      }
-    : null;
+  const filters = discoveryFiltersFor(query, liveDiscovery);
+  const legalStatus = filters.legalStatus;
   const hasFilters = Boolean(
     query.category || legalStatus || query.year || query.sort !== "featured",
   );
@@ -85,14 +75,14 @@ export default async function DiscoverPage({
     return `/${locale}/discover${suffix ? `?${suffix}` : ""}`;
   };
   const filterLink = (href: string, active: boolean, label: string) => (
-    <Link
+    <FilterLink
       key={`${href}-${label}`}
       href={href}
       aria-current={active ? "page" : undefined}
       className={`discovery-filter ${active ? "discovery-filter-active" : ""}`}
     >
       {label}
-    </Link>
+    </FilterLink>
   );
 
   return (
@@ -211,40 +201,93 @@ export default async function DiscoverPage({
         <p role="alert" className="notice">
           {m.invalid}
         </p>
-      ) : !result ? (
-        <p role="alert" className="notice">
-          {m.discoveryUnavailable}
-        </p>
-      ) : result.patents.length ? (
-        <>
-          <div className="grid-cards">
-            {result.patents.map((patent) => (
-              <DiscoverCard key={patent.id} patent={patent} locale={locale} />
-            ))}
-          </div>
-          <nav
-            aria-label={m.page}
-            className="pager my-8 flex items-center justify-center gap-4 text-sm"
-          >
-            {query.page > 1 && (
-              <Link href={url({ page: query.page - 1 })}>{m.previous}</Link>
-            )}
-            <span>
-              {m.page} {query.page}
-            </span>
-            {query.page * result.pageSize < result.total && (
-              <Link href={url({ page: query.page + 1 })}>{m.next}</Link>
-            )}
-          </nav>
-        </>
       ) : (
-        <div className="panel text-center">
-          <h2>{m.discoveryEmpty}</h2>
-          <Button asChild variant="outline">
-            <Link href={`/${locale}/discover`}>{m.clear}</Link>
-          </Button>
+        <div className="discover-results">
+          <Suspense
+            key={JSON.stringify(filters)}
+            fallback={<ResultsLoading />}
+          >
+            <DiscoverResults
+              filters={filters}
+              locale={locale}
+              page={query.page}
+              pageUrl={(page) => url({ page })}
+            />
+          </Suspense>
         </div>
       )}
     </>
+  );
+}
+
+function ResultsLoading() {
+  return (
+    <div className="grid-cards" aria-busy="true">
+      {[1, 2, 3, 4, 5, 6].map((item) => (
+        <Skeleton key={item} className="h-[28rem]" />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Results stream in on their own: the heading and filters render at once,
+ * so a cold filter (EPO search, record lookups, card translation) shows a
+ * skeleton in place instead of holding the whole page.
+ */
+async function DiscoverResults({
+  filters,
+  locale,
+  page,
+  pageUrl,
+}: {
+  filters: DiscoveryFilters;
+  locale: Locale;
+  page: number;
+  pageUrl: (page: number) => string;
+}) {
+  const m = messages[locale];
+  const rawResult = patentProvider.discoverPatents
+    ? await patentProvider.discoverPatents(filters).catch(() => null)
+    : null;
+  const result = rawResult
+    ? {
+        ...rawResult,
+        patents: await localizePatentCards(rawResult.patents, locale),
+      }
+    : null;
+  return !result ? (
+    <p role="alert" className="notice">
+      {m.discoveryUnavailable}
+    </p>
+  ) : result.patents.length ? (
+    <>
+      <div className="grid-cards">
+        {result.patents.map((patent) => (
+          <DiscoverCard key={patent.id} patent={patent} locale={locale} />
+        ))}
+      </div>
+      <nav
+        aria-label={m.page}
+        className="pager my-8 flex items-center justify-center gap-4 text-sm"
+      >
+        {page > 1 && (
+          <FilterLink href={pageUrl(page - 1)}>{m.previous}</FilterLink>
+        )}
+        <span>
+          {m.page} {page}
+        </span>
+        {page * result.pageSize < result.total && (
+          <FilterLink href={pageUrl(page + 1)}>{m.next}</FilterLink>
+        )}
+      </nav>
+    </>
+  ) : (
+    <div className="panel text-center">
+      <h2>{m.discoveryEmpty}</h2>
+      <Button asChild variant="outline">
+        <Link href={`/${locale}/discover`}>{m.clear}</Link>
+      </Button>
+    </div>
   );
 }

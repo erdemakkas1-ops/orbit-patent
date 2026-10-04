@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { patentProvider } from "@/lib/patents";
 import { DiscoverCard } from "@/components/patents/discover-card";
 import { discoveryCategories } from "@/lib/patents/discovery";
-import { localizePatents } from "@/lib/ai/translation";
+import { localizePatentCards } from "@/lib/ai/translation";
 import {
   HeroBlueprint,
   HeroBlueprintFrame,
@@ -18,7 +18,7 @@ async function FeaturedPatentCards({ locale }: { locale: Locale }) {
   const rawFeatured = patentProvider.getFeaturedPatents
     ? await patentProvider.getFeaturedPatents(3).catch(() => [])
     : [];
-  const featured = await localizePatents(rawFeatured, locale);
+  const featured = await localizePatentCards(rawFeatured, locale);
   if (!featured.length) return null;
   return (
     <div className="grid-cards">

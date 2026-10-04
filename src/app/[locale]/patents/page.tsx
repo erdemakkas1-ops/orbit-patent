@@ -8,7 +8,7 @@ import { PatentCard } from "@/components/patents/patent-card";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
 import { hydratePatentReferences } from "@/lib/patents/providers/epo";
-import { localizePatents } from "@/lib/ai/translation";
+import { localizePatentCards } from "@/lib/ai/translation";
 
 export async function generateMetadata({
   params,
@@ -48,12 +48,11 @@ export default async function SearchPage({
     rawResult && liveSearch
       ? {
           ...rawResult,
-          patents: await localizePatents(
+          patents: await localizePatentCards(
             await hydratePatentReferences(
               rawResult.patents,
               (id) => patentProvider.getPatentById(id),
               rawResult.pageSize,
-              3,
             ),
             locale,
           ),

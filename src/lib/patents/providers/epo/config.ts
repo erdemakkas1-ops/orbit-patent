@@ -6,6 +6,8 @@ export const EPO_CONFIG = {
   searchCacheMs: 5 * 60_000,
   detailCacheMs: 30 * 60_000,
   durableDetailCacheMs: 7 * 24 * 60 * 60_000,
+  // Discover pages: refreshed daily by the cache warmer (api/cron/warm).
+  durableDiscoveryCacheMs: 36 * 60 * 60_000,
   // Published claims never change.
   durableClaimsCacheMs: 30 * 24 * 60 * 60_000,
   drawingMetadataCacheMs: 60 * 60_000,

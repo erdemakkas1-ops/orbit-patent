@@ -48,6 +48,7 @@ import {
   EpoOpsHttpError,
   EpoOpsPatentProvider,
   hydratePatentReferences,
+  EPO_DISCOVERY_CONCURRENCY,
 } from "../src/lib/patents/providers/epo";
 import {
   parsePatentIdentifier,
@@ -889,7 +890,17 @@ test("EPO featured patents use one deterministic cached search", async () => {
   assert.equal(calls, 1);
 });
 test("EPO hydration bounds concurrency, removes duplicates and survives failures", async () => {
-  const references = ["EP1A1", "EP2A1", "EP2A1", "EP3A1", "EP4A1"].map(
+  const references = [
+    "EP1A1",
+    "EP2A1",
+    "EP2A1",
+    "EP3A1",
+    "EP4A1",
+    "EP5A1",
+    "EP6A1",
+    "EP7A1",
+    "EP8A1",
+  ].map(
     (id) => ({
       ...mockPatents[0],
       id,
@@ -920,11 +931,19 @@ test("EPO hydration bounds concurrency, removes duplicates and survives failures
     4,
     10,
   );
-  assert.equal(maxActive, 3);
-  assert.deepEqual(calls, ["EP1A1", "EP2A1", "EP3A1", "EP4A1"]);
+  // Asked for 10 at once, capped at EPO_DISCOVERY_CONCURRENCY.
+  assert.equal(maxActive, EPO_DISCOVERY_CONCURRENCY);
+  assert.deepEqual(calls, [
+    "EP1A1",
+    "EP2A1",
+    "EP3A1",
+    "EP4A1",
+    "EP5A1",
+    "EP6A1",
+  ]);
   assert.deepEqual(
     hydrated.map((patent) => patent.id),
-    ["EP1A1", "EP2A1", "EP4A1"],
+    ["EP1A1", "EP2A1", "EP4A1", "EP5A1"],
   );
 });
 test("EPO detail removes kind for EPODOC and uses controlled DOCDB fallback", async () => {
@@ -1690,7 +1709,7 @@ test("homepage featured patents reuse localization and card thumbnails", () => {
     "src/components/patents/patent-drawing-viewer.tsx",
     "utf8",
   );
-  assert.match(home, /localizePatents\(rawFeatured, locale\)/);
+  assert.match(home, /localizePatentCards\(rawFeatured, locale\)/);
   assert.match(home, /<FeaturedPatentCards locale={locale} \/>/);
   assert.match(home, /<Suspense/);
   assert.match(card, /cardDrawingUrl\(drawing\.url\)/);
@@ -1855,4 +1874,65 @@ test("shared AI rate limit stays open in development and without a shared store"
   // No KV/Upstash credentials in tests: the per-instance guard is all that applies.
   for (let i = 0; i < 50; i++)
     assert.equal(await admitSharedAiRequest(request, "production"), true);
+});
+
+test("card translations send no description, a short abstract and use their own cache key", async () => {
+  clearTranslationCacheForTests();
+  const sent: { abstract: string; description: string }[][] = [];
+  const provider = {
+    source: "openai" as const,
+    model: "gpt-4.1-mini",
+    async translatePatentTexts(
+      items: { abstract: string; description: string }[],
+    ) {
+      sent.push(items);
+      return items.map((_item, index) => ({
+        index,
+        title: `Başlık ${index}`,
+        abstract: "Kısa özet",
+        description: "",
+      }));
+    },
+  };
+  const patent = {
+    ...mockPatents[0],
+    publicationNumber: "CARD-1",
+    title: { tr: "", en: "Card title" },
+    abstract: { tr: "", en: "A".repeat(2000) },
+    description: { tr: "", en: "Very long description" },
+  };
+  const [card] = await localizePatentsWithProvider(
+    [patent],
+    "tr",
+    provider,
+    "card",
+  );
+  assert.equal(sent[0][0].description, "");
+  assert.equal(sent[0][0].abstract.length, 600);
+  assert.equal(card.translations?.tr?.title, "Başlık 0");
+  // The detail page still gets (and caches) a full translation separately.
+  await localizePatentsWithProvider([patent], "tr", provider);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1][0].description, "Very long description");
+});
+
+test("the cache warmer builds exactly the filters the discover page uses", async () => {
+  const { discoveryWarmList, discoveryFiltersFor, discoveryQuerySchema } =
+    await import("../src/lib/patents/discovery");
+  const { stableCacheKey } = await import("../src/lib/cache-key");
+  const warmed = new Set(
+    discoveryWarmList().map((filters) =>
+      stableCacheKey("epo-discovery", filters),
+    ),
+  );
+  assert.equal(warmed.size, 54);
+  for (const url of [
+    {},
+    { category: "energy" },
+    { year: "likely-expired" },
+    { category: "assistive", year: "2010-2019" },
+  ]) {
+    const page = discoveryFiltersFor(discoveryQuerySchema.parse(url), true);
+    assert.ok(warmed.has(stableCacheKey("epo-discovery", page)), JSON.stringify(url));
+  }
 });
