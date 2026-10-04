@@ -9,6 +9,10 @@ import { patentProvider } from "@/lib/patents";
 import { DiscoverCard } from "@/components/patents/discover-card";
 import { discoveryCategories } from "@/lib/patents/discovery";
 import { localizePatents } from "@/lib/ai/translation";
+import {
+  HeroBlueprint,
+  HeroBlueprintFrame,
+} from "@/components/home/hero-blueprint";
 
 async function FeaturedPatentCards({ locale }: { locale: Locale }) {
   const rawFeatured = patentProvider.getFeaturedPatents
@@ -38,71 +42,95 @@ export default async function Home({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const m = messages[locale];
+  // "Discover ideas from the past. Build the projects of the future." — the
+  // second sentence carries the colour accent.
+  const [headlineLead, ...rest] = m.headline.split(/(?<=\.)\s+/);
+  const headlineRest = rest.join(" ");
   return (
     <section className="py-8 md:py-14">
       <div className="hero-grid">
         <div>
           <p className="eyebrow">{m.eyebrow}</p>
-          <p className="brand-link mt-3 text-sm font-medium">
-            {m.publicPlatform}
-          </p>
-          <h1 className="hero-title my-6 max-w-2xl">{m.headline}</h1>
-          <p className="muted max-w-xl text-lg">{m.intro}</p>
-          <div className="mt-9 flex flex-wrap gap-3">
+          <h1 className="hero-title my-6 max-w-2xl">
+            {headlineLead}{" "}
+            <span className="hero-accent">{headlineRest}</span>
+          </h1>
+          <p className="hero-intro max-w-xl">{m.intro}</p>
+          <div className="mt-9 flex flex-wrap items-center gap-3">
             <Button asChild>
-              <Link href={`/${locale}/discover`}>{m.patentExplore}</Link>
+              <Link href={`/${locale}/discover?year=likely-expired`}>
+                {m.patentExplore}
+              </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/${locale}/patents`}>{m.search}</Link>
+              <Link href={`/${locale}/ai-search`}>{m.aiSearch}</Link>
             </Button>
-            <Link
-              className="card-action self-center px-2 text-sm font-semibold"
-              href={`/${locale}/ai-search`}
-            >
-              {m.aiSearch}
-            </Link>
           </div>
+          <ul className="hero-proof">
+            {m.heroProof.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
-        <div className="hero-orbit" aria-hidden="true">
-          <span className="orbit-node" style={{ top: "24%", left: "28%" }} />
-          <span className="orbit-node" style={{ top: "62%", left: "68%" }} />
-          <span className="orbit-node" style={{ top: "72%", left: "22%" }} />
-        </div>
+        <Suspense fallback={<HeroBlueprintFrame locale={locale} />}>
+          <HeroBlueprint locale={locale} />
+        </Suspense>
       </div>
-      <div className="feature-row mt-16">
-        {[
-          [m.discover, m.featureDiscoveryText],
-          [m.search, m.featureSearchText],
-          [m.aiSearch, m.featureMatchingText],
-        ].map(([title, text], i) => (
-          <div key={title}>
-            <p className="eyebrow mb-3">0{i + 1}</p>
-            <h3 className="mb-2">{title}</h3>
-            <p className="muted text-sm">{text}</p>
-          </div>
-        ))}
-      </div>
-      <section
-        className="how-it-works mt-16"
-        aria-labelledby="how-it-works-title"
-      >
-        <p className="eyebrow">ORBIT / {m.howItWorks}</p>
-        <h2 id="how-it-works-title" className="mt-2">
-          {m.howItWorks}
+      <section className="steps mt-20" aria-labelledby="steps-title">
+        <p className="eyebrow">{m.howItWorks}</p>
+        <h2 id="steps-title" className="steps-title">
+          {m.stepsTitle}
         </h2>
-        <div className="how-steps">
-          {[
-            [m.howDiscover, m.howDiscoverText],
-            [m.howUnderstand, m.howUnderstandText],
-            [m.howDevelop, m.howDevelopText],
-          ].map(([title, text], index) => (
-            <div className="how-step" key={title}>
-              <span className="how-step-number">0{index + 1}</span>
-              <h3>{title}</h3>
-              <p className="muted text-sm">{text}</p>
+        <ol className="steps-list">
+          <li className="step">
+            <span className="step-number">01</span>
+            <h3>{m.howDiscover}</h3>
+            <p>{m.howDiscoverText}</p>
+            <div className="step-preview" aria-hidden="true">
+              <span className="specimen-status status-lapsed">
+                {m.stepPreviewStatus}
+              </span>
             </div>
-          ))}
-        </div>
+            <Link
+              className="step-link"
+              href={`/${locale}/discover?year=likely-expired`}
+            >
+              {m.stepCtas.discover} →
+            </Link>
+          </li>
+          <li className="step">
+            <span className="step-number">02</span>
+            <h3>{m.howUnderstand}</h3>
+            <p>{m.howUnderstandText}</p>
+            <div className="step-preview" aria-hidden="true">
+              <span className="metric-chip">{m.claim} 1</span>
+              <span className="metric-chip">{m.claim} 12</span>
+              <span className="step-preview-note">{m.stepPreviewClaim}</span>
+            </div>
+            <Link className="step-link" href={`/${locale}/patents`}>
+              {m.stepCtas.understand} →
+            </Link>
+          </li>
+          <li className="step">
+            <span className="step-number">03</span>
+            <h3>{m.howDevelop}</h3>
+            <p>{m.howDevelopText}</p>
+            <div className="step-preview" aria-hidden="true">
+              <span className="step-chip">
+                {m.developDirections.cheaper.label}
+              </span>
+              <span className="step-chip step-chip-on">
+                {m.developDirections.smarter.label}
+              </span>
+              <span className="step-chip">
+                {m.developDirections["new-use"].label}
+              </span>
+            </div>
+            <Link className="step-link" href={`/${locale}/ai-search`}>
+              {m.stepCtas.develop} →
+            </Link>
+          </li>
+        </ol>
       </section>
       <section className="mt-16">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">

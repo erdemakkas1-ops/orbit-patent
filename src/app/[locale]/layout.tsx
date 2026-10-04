@@ -8,6 +8,7 @@ import { NavLinks } from "@/components/layout/nav-links";
 import type { Metadata } from "next";
 import { buildMetadata, seoCopy } from "@/lib/seo";
 import { legalPages } from "@/lib/legal-content";
+import { bodyFont, displayFont } from "@/app/fonts";
 
 export async function generateMetadata({
   params,
@@ -33,7 +34,10 @@ export default async function Layout({
   if (!isLocale(locale)) notFound();
   const m = messages[locale];
   return (
-    <html lang={locale}>
+    <html
+      lang={locale}
+      className={`${bodyFont.variable} ${displayFont.variable}`}
+    >
       <body>
         <a href="#main" className="skip">
           {m.skip}

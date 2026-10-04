@@ -12,6 +12,22 @@ export const messages = {
       "Projenizi normal şekilde anlatın. ORBIT ilgili teknolojileri ve patentleri bulsun.",
     intro:
       "Süresi dolmuş patentleri özgün çizimleri ve sicil durumuyla keşfet, korunan mekanizmayı anla, kendi versiyonunu test edilebilir hipotezlerle geliştir.",
+    heroProof: [
+      "Canlı EPO sicil verisi",
+      "Kaynağıyla hukuki durum",
+      "Hipotez olarak işaretli AI",
+    ],
+    heroSpecimen: "Seçmelerden bir patent",
+    heroInspect: "Bu patenti incele",
+    heroPlaceholder: "Özgün patent çizimi yükleniyor",
+    stepsTitle: "Eski bir patentten kendi projene üç adım",
+    stepCtas: {
+      discover: "Süresi dolmuşları gör",
+      understand: "Patent ara",
+      develop: "Projeni anlat",
+    },
+    stepPreviewStatus: "US · Ücret ödenmediği için düştüğü bildiriliyor · 2011",
+    stepPreviewClaim: "AI özeti · yalnızca istemlere dayanır",
     featuredExpiredTitle: "Süresi dolmuş patentlerden seçmeler",
     featuredExpiredIntro:
       "Kartlardaki durum EPO sicilinden gelir; sicilde kayıt yoksa tahmini olduğu ayrıca yazar.",
@@ -331,6 +347,22 @@ export const messages = {
       "Pick a direction; AI suggests hypotheses with a basis and a test, plus cost and materials.",
     intro:
       "Explore expired patents with their original drawings and register status, understand the protected mechanism, and develop your own version with testable hypotheses.",
+    heroProof: [
+      "Live EPO register data",
+      "Legal status with its source",
+      "AI marked as hypothesis",
+    ],
+    heroSpecimen: "A patent from our picks",
+    heroInspect: "Inspect this patent",
+    heroPlaceholder: "Loading an original patent drawing",
+    stepsTitle: "Three steps from an old patent to your own project",
+    stepCtas: {
+      discover: "See expired patents",
+      understand: "Search patents",
+      develop: "Describe your project",
+    },
+    stepPreviewStatus: "US · Reported lapsed for non-payment of fees · 2011",
+    stepPreviewClaim: "AI summary · based only on the claims",
     featuredExpiredTitle: "Picks from expired patents",
     featuredExpiredIntro:
       "Card status comes from the EPO register; where the register is silent, the card says it is an estimate.",
